@@ -1,0 +1,74 @@
+{
+  "services": [
+    {
+      "id": "obsidian-canvas-to-json",
+      "kind": "transform",
+      "deterministic": true,
+      "description": "Convert an Obsidian canvas file into a relationship-focused JSON structure with explicit nested groups.",
+      "entrypoint": "python ./services/obsidian-canvas-json/app.py",
+      "inputs": [
+        {
+          "name": "canvas",
+          "type": "application/vnd.obsidian.canvas+json",
+          "description": "An Obsidian canvas file."
+        }
+      ],
+      "outputs": [
+        {
+          "name": "relationships",
+          "type": "application/json",
+          "description": "A simplified JSON graph of group, node, and edge relationships."
+        }
+      ],
+      "notes": "Deterministic geometry should be preferred over any LLM interpretation for group inference.",
+      "version": "0.1.0"
+    },
+    {
+      "id": "json-to-markdown-render",
+      "kind": "render",
+      "deterministic": true,
+      "description": "Render a JSON artifact into Markdown using a template.",
+      "entrypoint": "python ./services/json-renderer/app.py",
+      "inputs": [
+        {
+          "name": "data",
+          "type": "application/json",
+          "description": "Structured JSON data for rendering."
+        }
+      ],
+      "outputs": [
+        {
+          "name": "markdown",
+          "type": "text/markdown",
+          "description": "Rendered Markdown output."
+        }
+      ],
+      "configSchema": "./schemas/render-config.schema.json",
+      "version": "0.1.0"
+    },
+    {
+      "id": "md-issues-to-json",
+      "kind": "transform",
+      "deterministic": false,
+      "description": "Use an LLM to distill client Markdown into a JSON issue set.",
+      "entrypoint": "python ./services/md-advisor/app.py",
+      "inputs": [
+        {
+          "name": "client-markdown",
+          "type": "text/markdown",
+          "description": "Markdown documents describing the client context."
+        }
+      ],
+      "outputs": [
+        {
+          "name": "issues",
+          "type": "application/json",
+          "description": "Structured issue extraction output."
+        }
+      ],
+      "configSchema": "./schemas/llm-transform-config.schema.json",
+      "notes": "JSON schema validation and retry policies should be mandatory for this kind of service.",
+      "version": "0.1.0"
+    }
+  ]
+}
