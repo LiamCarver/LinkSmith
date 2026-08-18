@@ -9,6 +9,7 @@ Each registry entry describes:
 - what the service is
 - what it accepts
 - what it emits
+- how each port behaves
 - whether it is deterministic or LLM-backed
 - where the engine should invoke it
 - what config shape it expects
@@ -38,6 +39,8 @@ The initial registry model is intentionally small:
   - `entrypoint`
   - `inputs`
   - `outputs`
+  - per-port `mode`
+  - per-port `cardinality`
   - optional `configSchema`
   - optional `notes`
 
@@ -63,6 +66,33 @@ Artifact types are string labels for now. Examples:
 
 This can evolve later into a stricter type model if needed.
 
+## Port Semantics
+
+Each port now carries extra specificity:
+
+- `name`
+- `type`
+- `mode`
+- `cardinality`
+
+`mode` describes how the artifact is treated:
+
+- `file`
+- `directory`
+- `artifact-ref`
+
+`cardinality` describes whether the service expects or emits:
+
+- `one`
+- `many`
+
+This is required because LinkSmith needs to support:
+
+- deterministic converters such as canvas -> JSON
+- folder-based LLM summarizers
+- synthesis services that accept arrays of prior artifacts
+- services that emit more than one artifact
+
 ## Deterministic Flag
 
 `deterministic` is an explicit boolean.
@@ -76,6 +106,5 @@ The engine can later use this field for validation, recommendations, or executio
 ## Open Questions
 
 - Should `entrypoint` be a structured object instead of a string in v1?
-- Should `inputs` and `outputs` support multiple named ports immediately?
 - Should registry entries declare version compatibility with the engine?
 - Should a service declare whether it is safe for caching or memoization?

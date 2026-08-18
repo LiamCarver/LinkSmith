@@ -10,6 +10,8 @@
         {
           "name": "canvas",
           "type": "application/vnd.obsidian.canvas+json",
+          "mode": "file",
+          "cardinality": "one",
           "description": "An Obsidian canvas file."
         }
       ],
@@ -17,10 +19,108 @@
         {
           "name": "relationships",
           "type": "application/json",
+          "mode": "artifact-ref",
+          "cardinality": "one",
           "description": "A simplified JSON graph of group, node, and edge relationships."
         }
       ],
       "notes": "Deterministic geometry should be preferred over any LLM interpretation for group inference.",
+      "version": "0.1.0"
+    },
+    {
+      "id": "markdown-folder-to-summary-json",
+      "kind": "transform",
+      "deterministic": false,
+      "description": "Use an LLM-backed process to summarize a folder of Markdown files into structured JSON.",
+      "entrypoint": "python ./services/md-summarizer/app.py",
+      "inputs": [
+        {
+          "name": "documents",
+          "type": "text/markdown",
+          "mode": "directory",
+          "cardinality": "many",
+          "description": "A folder or collection of Markdown files."
+        }
+      ],
+      "outputs": [
+        {
+          "name": "summary",
+          "type": "application/json",
+          "mode": "artifact-ref",
+          "cardinality": "one",
+          "description": "Structured JSON summary."
+        }
+      ],
+      "configSchema": "./schemas/llm-transform-config.schema.json",
+      "notes": "JSON schema validation and retry policies should be mandatory for this kind of service.",
+      "version": "0.1.0"
+    },
+    {
+      "id": "context-to-questions-json",
+      "kind": "transform",
+      "deterministic": false,
+      "description": "Combine multiple structured JSON context inputs and produce a questions list in JSON.",
+      "entrypoint": "python ./services/context-questions/app.py",
+      "inputs": [
+        {
+          "name": "context",
+          "type": "application/json",
+          "mode": "artifact-ref",
+          "cardinality": "many",
+          "description": "A set of prior JSON artifacts used as synthesis context."
+        }
+      ],
+      "outputs": [
+        {
+          "name": "questions",
+          "type": "application/json",
+          "mode": "artifact-ref",
+          "cardinality": "one",
+          "description": "Structured JSON questions for manual answering."
+        }
+      ],
+      "configSchema": "./schemas/llm-transform-config.schema.json",
+      "version": "0.1.0"
+    },
+    {
+      "id": "answers-and-context-to-analysis-json",
+      "kind": "transform",
+      "deterministic": false,
+      "description": "Combine manual answers and prior JSON context to produce several analysis artifacts.",
+      "entrypoint": "python ./services/analysis-generator/app.py",
+      "inputs": [
+        {
+          "name": "answers",
+          "type": "application/json",
+          "mode": "artifact-ref",
+          "cardinality": "one",
+          "description": "Manual answer set captured in JSON."
+        },
+        {
+          "name": "context",
+          "type": "application/json",
+          "mode": "artifact-ref",
+          "cardinality": "many",
+          "description": "Supporting JSON context from earlier stages."
+        }
+      ],
+      "outputs": [
+        {
+          "name": "risks",
+          "type": "application/json",
+          "mode": "artifact-ref",
+          "cardinality": "one",
+          "description": "Structured risk analysis."
+        },
+        {
+          "name": "team-leverage",
+          "type": "application/json",
+          "mode": "artifact-ref",
+          "cardinality": "one",
+          "description": "Structured team leverage analysis."
+        }
+      ],
+      "configSchema": "./schemas/llm-transform-config.schema.json",
       "version": "0.1.0"
     },
     {
@@ -33,6 +133,8 @@
         {
           "name": "data",
           "type": "application/json",
+          "mode": "artifact-ref",
+          "cardinality": "one",
           "description": "Structured JSON data for rendering."
         }
       ],
@@ -40,34 +142,12 @@
         {
           "name": "markdown",
           "type": "text/markdown",
+          "mode": "artifact-ref",
+          "cardinality": "one",
           "description": "Rendered Markdown output."
         }
       ],
       "configSchema": "./schemas/render-config.schema.json",
-      "version": "0.1.0"
-    },
-    {
-      "id": "md-issues-to-json",
-      "kind": "transform",
-      "deterministic": false,
-      "description": "Use an LLM to distill client Markdown into a JSON issue set.",
-      "entrypoint": "python ./services/md-advisor/app.py",
-      "inputs": [
-        {
-          "name": "client-markdown",
-          "type": "text/markdown",
-          "description": "Markdown documents describing the client context."
-        }
-      ],
-      "outputs": [
-        {
-          "name": "issues",
-          "type": "application/json",
-          "description": "Structured issue extraction output."
-        }
-      ],
-      "configSchema": "./schemas/llm-transform-config.schema.json",
-      "notes": "JSON schema validation and retry policies should be mandatory for this kind of service.",
       "version": "0.1.0"
     }
   ]

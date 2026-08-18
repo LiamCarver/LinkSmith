@@ -9,4 +9,8 @@ The design goal is to make pipelines explicit, composable, and inspectable:
 - pipelines reference registered services
 - deterministic services are preferred where exact code can replace fuzzy AI behavior
 
-The first artifact in this repository is the service registry contract.
+The repository currently starts with:
+
+- a service registry contract
+- a pipeline definition contract
+- example registry and pipeline fixtures

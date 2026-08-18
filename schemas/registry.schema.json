@@ -18,15 +18,23 @@
     "artifactPort": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "type"],
+      "required": ["name", "type", "mode", "cardinality"],
       "properties": {
         "name": {
           "type": "string",
-          "minLength": 1
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
         },
         "type": {
           "type": "string",
           "minLength": 1
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["file", "directory", "artifact-ref"]
+        },
+        "cardinality": {
+          "type": "string",
+          "enum": ["one", "many"]
         },
         "required": {
           "type": "boolean",
