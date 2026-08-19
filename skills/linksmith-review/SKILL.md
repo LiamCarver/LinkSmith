@@ -1,6 +1,6 @@
 ---
 name: linksmith-review
-description: "Review LinkSmith branches when the task is a PR review, branch review, or change review for this repository and the reviewer should apply LinkSmith's contract-first, deterministic-first standards."
+description: "Review local LinkSmith branches when the task is a PR review, branch review, or change review for this repository and the reviewer should apply LinkSmith's contract-first, deterministic-first standards."
 ---
 
 # Linksmith Review
@@ -9,7 +9,7 @@ Use this skill when reviewing LinkSmith changes. The goal is to produce a high-s
 
 ## Workflow
 
-1. Run `scripts/review-branch.ps1` when a source and target branch are available.
+1. Run `scripts/review-branch.ps1` when local source and target branches are available.
 2. Read:
    - `docs/python-standards.md`
    - `docs/pr-review.md`
@@ -38,5 +38,7 @@ Use this skill when reviewing LinkSmith changes. The goal is to produce a high-s
 
 ## Notes
 
+- The default review path is local branch vs local branch in this repo.
+- Use `-FetchFirst` only when the user explicitly wants remote updates pulled in before the review.
 - Use the branch review script output as the main diff input when available.
 - Do not expand the review into unrelated refactors or implementation proposals unless they directly explain a finding.
