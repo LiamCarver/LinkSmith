@@ -1,0 +1,89 @@
+{
+  "groups": [
+    {
+      "id": "group-company",
+      "label": "Company Principles",
+      "groups": [
+        {
+          "id": "group-client",
+          "label": "Client Space",
+          "groups": [
+            {
+              "id": "group-risks",
+              "label": "Risks",
+              "groups": [],
+              "nodes": [
+                {
+                  "id": "node-risk-approval",
+                  "type": "text",
+                  "text": "Approval latency"
+                },
+                {
+                  "id": "node-risk-ambiguity",
+                  "type": "text",
+                  "text": "Role ambiguity"
+                }
+              ]
+            }
+          ],
+          "nodes": [
+            {
+              "id": "node-client-context",
+              "type": "text",
+              "text": "Large enterprise release process"
+            }
+          ]
+        }
+      ],
+      "nodes": [
+        {
+          "id": "node-principle-ownership",
+          "type": "text",
+          "text": "Ownership over handoff"
+        },
+        {
+          "id": "node-principle-feedback",
+          "type": "text",
+          "text": "Short feedback loops"
+        }
+      ]
+    }
+  ],
+  "ungroupedNodes": [
+    {
+      "id": "node-outside",
+      "type": "text",
+      "text": "Independent note"
+    }
+  ],
+  "edges": [
+    {
+      "fromNode": "node-principle-ownership",
+      "toNode": "node-client-context",
+      "fromGroupId": "group-company",
+      "toGroupId": "group-client",
+      "lowestSharedGroupId": "group-company"
+    },
+    {
+      "fromNode": "node-client-context",
+      "toNode": "node-risk-approval",
+      "fromGroupId": "group-client",
+      "toGroupId": "group-risks",
+      "lowestSharedGroupId": "group-client"
+    },
+    {
+      "fromNode": "node-risk-approval",
+      "toNode": "node-risk-ambiguity",
+      "fromGroupId": "group-risks",
+      "toGroupId": "group-risks",
+      "lowestSharedGroupId": "group-risks"
+    },
+    {
+      "fromNode": "node-principle-feedback",
+      "toNode": "node-outside",
+      "fromGroupId": "group-company",
+      "toGroupId": null,
+      "lowestSharedGroupId": null
+    }
+  ]
+}

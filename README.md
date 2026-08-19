@@ -41,6 +41,14 @@ $env:PYTHONPATH="src"
 python -m unittest discover -s tests
 ```
 
+## Services
+
+The first concrete deterministic service is planned as:
+
+- `obsidian-canvas-to-relationships`
+
+It is intended to be container-first and reusable both as a standalone tool and as a future pipeline step.
+
 ## Review And Quality
 
 See:
