@@ -1,0 +1,41 @@
+{
+  "id": "canvas-to-doc",
+  "name": "Canvas To Documentation",
+  "inputs": [
+    {
+      "name": "canvas",
+      "type": "application/vnd.obsidian.canvas+json",
+      "mode": "file",
+      "cardinality": "one"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "documentation",
+      "type": "text/markdown",
+      "mode": "artifact-ref",
+      "cardinality": "one"
+    }
+  ],
+  "steps": [
+    {
+      "id": "extract",
+      "invocations": [
+        {
+          "id": "canvas",
+          "service": "obsidian-canvas-to-json"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "pipeline:input.canvas",
+      "to": "extract.canvas.canvas"
+    },
+    {
+      "from": "extract.canvas.relationships",
+      "to": "pipeline:output.documentation"
+    }
+  ]
+}

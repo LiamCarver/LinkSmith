@@ -1,0 +1,9 @@
+{
+  "schema": "../../../schemas/canvas-relationships.schema.json",
+  "valid": [
+    "valid/minimal.valid.json"
+  ],
+  "invalid": [
+    "invalid/missing-edges.invalid.json"
+  ]
+}

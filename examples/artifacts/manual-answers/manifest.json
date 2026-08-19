@@ -1,0 +1,9 @@
+{
+  "schema": "../../../schemas/manual-answers.schema.json",
+  "valid": [
+    "valid/minimal.valid.json"
+  ],
+  "invalid": [
+    "invalid/missing-answer.invalid.json"
+  ]
+}

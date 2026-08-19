@@ -1,0 +1,9 @@
+{
+  "risks": [
+    {
+      "id": "r1",
+      "title": "Unclear ownership",
+      "summary": "Work may stall if ownership is not assigned."
+    }
+  ]
+}

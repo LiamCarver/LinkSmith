@@ -1,0 +1,10 @@
+{
+  "schema": "../../schemas/pipeline.schema.json",
+  "valid": [
+    "valid/minimal.valid.json",
+    "valid/canvas-team-analysis.valid.json"
+  ],
+  "invalid": [
+    "invalid/missing-invocations.invalid.json"
+  ]
+}

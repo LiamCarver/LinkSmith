@@ -1,0 +1,168 @@
+{
+  "id": "canvas-team-analysis",
+  "name": "Canvas Team Analysis",
+  "description": "Combine a canvas, team principles, and job descriptions to generate questions, analysis artifacts, and Markdown reports.",
+  "version": "0.1.0",
+  "inputs": [
+    {
+      "name": "canvas",
+      "type": "application/vnd.obsidian.canvas+json",
+      "mode": "file",
+      "cardinality": "one"
+    },
+    {
+      "name": "team-principles",
+      "type": "text/markdown",
+      "mode": "directory",
+      "cardinality": "many"
+    },
+    {
+      "name": "job-descriptions",
+      "type": "text/markdown",
+      "mode": "directory",
+      "cardinality": "many"
+    },
+    {
+      "name": "manual-answers",
+      "type": "application/json",
+      "mode": "file",
+      "cardinality": "one"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "questions",
+      "type": "application/json",
+      "mode": "artifact-ref",
+      "cardinality": "one"
+    },
+    {
+      "name": "risks-report",
+      "type": "text/markdown",
+      "mode": "artifact-ref",
+      "cardinality": "one"
+    },
+    {
+      "name": "team-leverage-report",
+      "type": "text/markdown",
+      "mode": "artifact-ref",
+      "cardinality": "one"
+    }
+  ],
+  "steps": [
+    {
+      "id": "prepare_context",
+      "invocations": [
+        {
+          "id": "canvas",
+          "service": "obsidian-canvas-to-json"
+        },
+        {
+          "id": "principles",
+          "service": "markdown-folder-to-summary-json"
+        },
+        {
+          "id": "jobs",
+          "service": "markdown-folder-to-summary-json"
+        }
+      ]
+    },
+    {
+      "id": "question_generation",
+      "invocations": [
+        {
+          "id": "questions",
+          "service": "context-to-questions-json"
+        }
+      ]
+    },
+    {
+      "id": "analysis",
+      "invocations": [
+        {
+          "id": "analysis",
+          "service": "answers-and-context-to-analysis-json"
+        }
+      ]
+    },
+    {
+      "id": "render_reports",
+      "invocations": [
+        {
+          "id": "risks",
+          "service": "json-to-markdown-render"
+        },
+        {
+          "id": "team",
+          "service": "json-to-markdown-render"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "pipeline:input.canvas",
+      "to": "prepare_context.canvas.canvas"
+    },
+    {
+      "from": "pipeline:input.team-principles",
+      "to": "prepare_context.principles.documents"
+    },
+    {
+      "from": "pipeline:input.job-descriptions",
+      "to": "prepare_context.jobs.documents"
+    },
+    {
+      "from": "prepare_context.canvas.relationships",
+      "to": "question_generation.questions.context"
+    },
+    {
+      "from": "prepare_context.principles.summary",
+      "to": "question_generation.questions.context"
+    },
+    {
+      "from": "prepare_context.jobs.summary",
+      "to": "question_generation.questions.context"
+    },
+    {
+      "from": "question_generation.questions.questions",
+      "to": "pipeline:output.questions"
+    },
+    {
+      "from": "pipeline:input.manual-answers",
+      "to": "analysis.analysis.answers"
+    },
+    {
+      "from": "prepare_context.canvas.relationships",
+      "to": "analysis.analysis.context"
+    },
+    {
+      "from": "prepare_context.principles.summary",
+      "to": "analysis.analysis.context"
+    },
+    {
+      "from": "prepare_context.jobs.summary",
+      "to": "analysis.analysis.context"
+    },
+    {
+      "from": "question_generation.questions.questions",
+      "to": "analysis.analysis.context"
+    },
+    {
+      "from": "analysis.analysis.risks",
+      "to": "render_reports.risks.data"
+    },
+    {
+      "from": "analysis.analysis.team-leverage",
+      "to": "render_reports.team.data"
+    },
+    {
+      "from": "render_reports.risks.markdown",
+      "to": "pipeline:output.risks-report"
+    },
+    {
+      "from": "render_reports.team.markdown",
+      "to": "pipeline:output.team-leverage-report"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "schema": "../../../schemas/render-input.schema.json",
+  "valid": [
+    "valid/minimal.valid.json"
+  ],
+  "invalid": []
+}

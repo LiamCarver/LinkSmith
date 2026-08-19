@@ -1,0 +1,11 @@
+{
+  "summary": "A concise summary.",
+  "keyPoints": [
+    "Point one"
+  ],
+  "sourceRefs": [
+    {
+      "source": "principles/a.md"
+    }
+  ]
+}

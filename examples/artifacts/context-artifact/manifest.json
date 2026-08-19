@@ -1,0 +1,9 @@
+{
+  "schema": "../../../schemas/context-artifact.schema.json",
+  "valid": [
+    "valid/minimal.valid.json"
+  ],
+  "invalid": [
+    "invalid/missing-artifact-type.invalid.json"
+  ]
+}

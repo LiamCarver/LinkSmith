@@ -1,0 +1,9 @@
+{
+  "schema": "../../../schemas/questions.schema.json",
+  "valid": [
+    "valid/minimal.valid.json"
+  ],
+  "invalid": [
+    "invalid/missing-prompt.invalid.json"
+  ]
+}

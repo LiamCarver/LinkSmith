@@ -1,0 +1,14 @@
+{
+  "id": "bad-pipeline",
+  "steps": [
+    {
+      "id": "prepare_context"
+    }
+  ],
+  "edges": [
+    {
+      "from": "pipeline:input.canvas",
+      "to": "prepare_context.canvas.canvas"
+    }
+  ]
+}

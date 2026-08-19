@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://linksmith.dev/schemas/context-artifact.schema.json",
+  "title": "Context Artifact",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["artifactType"],
+  "properties": {
+    "artifactType": {
+      "type": "string",
+      "minLength": 1
+    },
+    "summary": {
+      "type": "string"
+    },
+    "sourceRefs": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    }
+  }
+}

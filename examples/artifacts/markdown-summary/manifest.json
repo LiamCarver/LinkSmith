@@ -1,0 +1,9 @@
+{
+  "schema": "../../../schemas/markdown-summary.schema.json",
+  "valid": [
+    "valid/minimal.valid.json"
+  ],
+  "invalid": [
+    "invalid/missing-summary.invalid.json"
+  ]
+}

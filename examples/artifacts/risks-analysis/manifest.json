@@ -1,0 +1,9 @@
+{
+  "schema": "../../../schemas/risks-analysis.schema.json",
+  "valid": [
+    "valid/minimal.valid.json"
+  ],
+  "invalid": [
+    "invalid/missing-title.invalid.json"
+  ]
+}

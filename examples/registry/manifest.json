@@ -1,0 +1,10 @@
+{
+  "schema": "../../schemas/registry.schema.json",
+  "valid": [
+    "valid/minimal.valid.json",
+    "valid/realistic.valid.json"
+  ],
+  "invalid": [
+    "invalid/missing-id.invalid.json"
+  ]
+}

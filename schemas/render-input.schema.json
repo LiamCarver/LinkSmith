@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://linksmith.dev/schemas/render-input.schema.json",
+  "title": "Render Input",
+  "type": "object",
+  "description": "Base schema for deterministic JSON-to-Markdown rendering input.",
+  "additionalProperties": true
+}

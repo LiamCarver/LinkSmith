@@ -74,6 +74,7 @@ Each port now carries extra specificity:
 - `type`
 - `mode`
 - `cardinality`
+- optional `schemaRef`
 
 `mode` describes how the artifact is treated:
 
@@ -92,6 +93,36 @@ This is required because LinkSmith needs to support:
 - folder-based LLM summarizers
 - synthesis services that accept arrays of prior artifacts
 - services that emit more than one artifact
+
+## JSON Schemas On Ports
+
+For JSON artifacts, the recommended place to define structural contracts is directly on the relevant port.
+
+That means an input or output port can declare:
+
+- `schemaRef`
+
+Example:
+
+```json
+{
+  "name": "summary",
+  "type": "application/json",
+  "mode": "artifact-ref",
+  "cardinality": "one",
+  "schemaRef": "./schemas/markdown-summary.schema.json"
+}
+```
+
+This keeps JSON structure tied to the service contract itself:
+
+- output ports declare what the service guarantees
+- input ports declare what the service expects
+
+That allows the engine to validate:
+
+- produced JSON immediately after a service runs
+- compatibility between upstream outputs and downstream inputs
 
 ## Deterministic Flag
 

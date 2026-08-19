@@ -1,0 +1,27 @@
+{
+  "services": [
+    {
+      "id": "json-to-markdown-render",
+      "kind": "render",
+      "deterministic": true,
+      "description": "Render a JSON artifact into Markdown using a template.",
+      "entrypoint": "python ./services/json-renderer/app.py",
+      "inputs": [
+        {
+          "name": "data",
+          "type": "application/json",
+          "mode": "artifact-ref",
+          "cardinality": "one"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "markdown",
+          "type": "text/markdown",
+          "mode": "artifact-ref",
+          "cardinality": "one"
+        }
+      ]
+    }
+  ]
+}

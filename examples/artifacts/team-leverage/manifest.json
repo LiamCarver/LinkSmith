@@ -1,0 +1,9 @@
+{
+  "schema": "../../../schemas/team-leverage.schema.json",
+  "valid": [
+    "valid/minimal.valid.json"
+  ],
+  "invalid": [
+    "invalid/missing-summary.invalid.json"
+  ]
+}
