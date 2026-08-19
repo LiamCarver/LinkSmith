@@ -14,3 +14,15 @@ The repository currently starts with:
 - a service registry contract
 - a pipeline definition contract
 - example registry and pipeline fixtures
+- Python standards and PR review guidance
+
+## Review And Quality
+
+See:
+
+- [docs/python-standards.md](C:/Users/Liam/Documents/GitHub/LinkSmith/docs/python-standards.md)
+- [docs/pr-review.md](C:/Users/Liam/Documents/GitHub/LinkSmith/docs/pr-review.md)
+
+For branch comparison and AI-friendly review input, use:
+
+- [scripts/review-branch.ps1](C:/Users/Liam/Documents/GitHub/LinkSmith/scripts/review-branch.ps1)

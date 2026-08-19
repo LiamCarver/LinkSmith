@@ -1,0 +1,3 @@
+interface:
+  display_name: "Linksmith Review"
+  short_description: "Review LinkSmith branches against repo standards and contract rules"
