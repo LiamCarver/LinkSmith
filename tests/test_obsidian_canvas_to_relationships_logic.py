@@ -11,7 +11,7 @@ from linksmith_services.obsidian_canvas_to_relationships import (
 
 class ObsidianCanvasLogicTests(unittest.TestCase):
     def test_realistic_nested_fixture_converts_to_expected_structure(self) -> None:
-        fixture_dir = Path(__file__).resolve().parents[1] / "examples" / "services" / "obsidian-canvas-to-relationships"
+        fixture_dir = Path(__file__).resolve().parents[1] / "fixtures" / "services" / "obsidian-canvas-to-relationships"
         input_path = fixture_dir / "input" / "realistic-nested.canvas"
         expected_path = fixture_dir / "expected" / "realistic-nested.relationships.json"
 

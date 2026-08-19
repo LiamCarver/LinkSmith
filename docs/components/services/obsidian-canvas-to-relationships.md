@@ -101,10 +101,10 @@ These should surface as explicit deterministic runtime errors.
 - Output schema:
   - `schemas/canvas-relationships.schema.json`
 - Service fixture pair:
-  - `examples/services/obsidian-canvas-to-relationships/input/realistic-nested.canvas`
-  - `examples/services/obsidian-canvas-to-relationships/expected/realistic-nested.relationships.json`
+  - `fixtures/services/obsidian-canvas-to-relationships/input/realistic-nested.canvas`
+  - `fixtures/services/obsidian-canvas-to-relationships/expected/realistic-nested.relationships.json`
 - Contract fixture:
-  - `examples/artifacts/canvas-relationships/valid/realistic-nested-groups.valid.json`
+  - `fixtures/artifacts/canvas-relationships/valid/realistic-nested-groups.valid.json`
 
 ## Open Questions
 

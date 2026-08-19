@@ -220,7 +220,7 @@ Relevant existing contracts and examples include:
 - `schemas/registry.schema.json`
 - `schemas/pipeline.schema.json`
 - artifact schemas under `schemas/`
-- example fixtures under `examples/artifacts/`
+- example fixtures under `fixtures/artifacts/`
 
 ## Decisions
 

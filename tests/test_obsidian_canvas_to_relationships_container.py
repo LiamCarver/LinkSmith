@@ -14,7 +14,7 @@ class ObsidianCanvasContainerTests(unittest.TestCase):
             self.skipTest("Docker is not available in PATH.")
 
         repo_root = Path(__file__).resolve().parents[1]
-        fixture_root = repo_root / "examples" / "services" / "obsidian-canvas-to-relationships"
+        fixture_root = repo_root / "fixtures" / "services" / "obsidian-canvas-to-relationships"
         image_tag = "linksmith-obsidian-canvas-to-relationships:test"
 
         subprocess.run(
