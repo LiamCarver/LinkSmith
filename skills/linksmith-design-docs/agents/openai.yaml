@@ -1,0 +1,3 @@
+interface:
+  display_name: "Linksmith Design Docs"
+  short_description: "Explain LinkSmith architecture and data flow before implementation"

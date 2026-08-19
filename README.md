@@ -15,13 +15,17 @@ The repository currently starts with:
 - a pipeline definition contract
 - example registry and pipeline fixtures
 - Python standards and PR review guidance
+- service documentation standards and templates
 
 ## Review And Quality
 
 See:
 
-- [docs/python-standards.md](C:/Users/Liam/Documents/GitHub/LinkSmith/docs/python-standards.md)
-- [docs/pr-review.md](C:/Users/Liam/Documents/GitHub/LinkSmith/docs/pr-review.md)
+- [docs/engineering/python-standards.md](C:/Users/Liam/Documents/GitHub/LinkSmith/docs/engineering/python-standards.md)
+- [docs/engineering/pr-review.md](C:/Users/Liam/Documents/GitHub/LinkSmith/docs/engineering/pr-review.md)
+- [docs/architecture/service-standards.md](C:/Users/Liam/Documents/GitHub/LinkSmith/docs/architecture/service-standards.md)
+- [docs/templates/service-design-template.md](C:/Users/Liam/Documents/GitHub/LinkSmith/docs/templates/service-design-template.md)
+- [docs/checklists/new-service-checklist.md](C:/Users/Liam/Documents/GitHub/LinkSmith/docs/checklists/new-service-checklist.md)
 
 For branch comparison and AI-friendly review input, use:
 
