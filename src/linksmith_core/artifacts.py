@@ -28,8 +28,19 @@ from .models import (
 
 def output_matches_port_contract(port: PortContract, output: ProducedArtifact) -> bool:
     if port.mode == "directory":
-        return isinstance(output, MarkdownDirectoryOutput) and _infer_artifact_kind(port.type) == "markdown"
-    artifact_kind = _infer_artifact_kind(port.type)
+        return (
+            isinstance(output, MarkdownDirectoryOutput)
+            and _infer_artifact_kind(
+                artifact_type=port.type,
+                schema_ref=port.schema_ref,
+            )
+            == "markdown"
+        )
+    artifact_kind = _infer_artifact_kind(
+        artifact_type=port.type,
+        schema_ref=port.schema_ref,
+        output=output,
+    )
     if artifact_kind == "json":
         return isinstance(output, JsonOutput)
     if artifact_kind == "markdown":
@@ -82,7 +93,11 @@ def _load_single_artifact(port: PortContract, path: Path) -> LoadedArtifact:
         raise UnsupportedArtifactModeError(
             f"Port '{port.name}' uses unsupported mode '{port.mode}'."
         )
-    artifact_kind = _infer_artifact_kind(port.type)
+    artifact_kind = _infer_artifact_kind(
+        artifact_type=port.type,
+        schema_ref=port.schema_ref,
+        path=path,
+    )
     if artifact_kind == "json":
         return _load_json_artifact(port, path)
     if artifact_kind == "markdown":
@@ -118,7 +133,14 @@ def _load_markdown_directory(port: PortContract, path: Path) -> MarkdownDirector
         raise ConfigurationError(
             f"Directory input for port '{port.name}' must be a directory: {path}"
         )
-    if _infer_artifact_kind(port.type) != "markdown":
+    if (
+        _infer_artifact_kind(
+            artifact_type=port.type,
+            schema_ref=port.schema_ref,
+            path=path,
+        )
+        != "markdown"
+    ):
         raise UnsupportedArtifactModeError(
             f"Directory input for port '{port.name}' only supports Markdown in v1."
         )
@@ -180,13 +202,28 @@ def _normalize_paths(provided: Path | tuple[Path, ...]) -> tuple[Path, ...]:
     return (provided,)
 
 
-def _infer_artifact_kind(artifact_type: str) -> str:
+def _infer_artifact_kind(
+    artifact_type: str,
+    schema_ref: str | None = None,
+    path: Path | None = None,
+    output: ProducedArtifact | None = None,
+) -> str:
     normalized = artifact_type.strip().lower()
     if normalized in {"json", "application/json"} or normalized.endswith("+json"):
         return "json"
     if normalized in {"markdown", "md", "text/markdown"}:
         return "markdown"
     if "markdown" in normalized:
+        return "markdown"
+    if schema_ref is not None and schema_ref.strip().lower().endswith(".json"):
+        return "json"
+    if path is not None and path.suffix.lower() in {".json", ".canvas"}:
+        return "json"
+    if path is not None and path.suffix.lower() in {".md", ".markdown"}:
+        return "markdown"
+    if isinstance(output, JsonOutput):
+        return "json"
+    if isinstance(output, (MarkdownOutput, MarkdownDirectoryOutput)):
         return "markdown"
     raise UnsupportedArtifactModeError(f"Unsupported artifact type '{artifact_type}'.")
 

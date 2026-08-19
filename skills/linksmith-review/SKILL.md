@@ -11,8 +11,8 @@ Use this skill when reviewing LinkSmith changes. The goal is to produce a high-s
 
 1. Run `scripts/review-branch.ps1` when local source and target branches are available.
 2. Read:
-   - `docs/python-standards.md`
-   - `docs/pr-review.md`
+   - `docs/engineering/python-standards.md`
+   - `docs/engineering/pr-review.md`
 3. Review findings in this order:
    - contract correctness
    - schema compatibility

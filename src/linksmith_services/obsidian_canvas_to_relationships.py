@@ -77,7 +77,7 @@ class ObsidianCanvasToRelationshipsService:
         inputs=(
             PortContract(
                 name="canvas",
-                type="application/json",
+                type="obsidian-canvas",
                 mode="file",
                 cardinality="one",
             ),
@@ -85,7 +85,7 @@ class ObsidianCanvasToRelationshipsService:
         outputs=(
             PortContract(
                 name="relationships",
-                type="application/json",
+                type="canvas-relationships",
                 mode="file",
                 cardinality="one",
                 schema_ref="schemas/canvas-relationships.schema.json",

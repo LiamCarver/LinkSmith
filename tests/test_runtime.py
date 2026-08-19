@@ -125,6 +125,51 @@ class RuntimeTests(unittest.TestCase):
         with self.assertRaises(SchemaDependencyError):
             validator.validate({"a": 1}, "schemas/registry.schema.json")
 
+    def test_custom_semantic_json_types_are_supported(self) -> None:
+        class SemanticJsonService:
+            contract = ServiceContract(
+                service_id="semantic-json-service",
+                inputs=(
+                    PortContract(
+                        name="canvas",
+                        type="obsidian-canvas",
+                        mode="file",
+                        cardinality="one",
+                    ),
+                ),
+                outputs=(
+                    PortContract(
+                        name="relationships",
+                        type="canvas-relationships",
+                        mode="file",
+                        cardinality="one",
+                    ),
+                ),
+            )
+
+            def execute(self, inputs, context):
+                return {
+                    "relationships": JsonOutput(
+                        relative_path=PurePath("relationships.json"),
+                        data={"groups": [], "ungroupedNodes": [], "edges": []},
+                    )
+                }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            input_file = root / "input.canvas"
+            input_file.write_text(json.dumps({"nodes": [], "edges": []}), encoding="utf-8")
+            result = run_service(
+                SemanticJsonService(),
+                ServiceRunRequest(
+                    inputs={"canvas": input_file},
+                    output_root=root / "out",
+                ),
+            )
+            output_file = root / "out" / "relationships" / "relationships.json"
+            self.assertTrue(output_file.exists())
+            self.assertEqual(result.written_outputs["relationships"], (output_file,))
+
     def test_output_type_mismatch_raises(self) -> None:
         class InvalidOutputService:
             contract = ServiceContract(
