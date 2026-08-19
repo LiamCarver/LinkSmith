@@ -1,0 +1,3 @@
+interface:
+  display_name: "Linksmith Service Build"
+  short_description: "Implement LinkSmith services with design-first, fixture-driven, container-first workflow"
