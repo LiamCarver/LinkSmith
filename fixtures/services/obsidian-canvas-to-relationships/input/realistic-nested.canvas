@@ -1,0 +1,115 @@
+{
+  "nodes": [
+    {
+      "id": "group-company",
+      "type": "group",
+      "x": 0,
+      "y": 0,
+      "width": 1200,
+      "height": 900,
+      "label": "Company Principles"
+    },
+    {
+      "id": "group-client",
+      "type": "group",
+      "x": 700,
+      "y": 120,
+      "width": 420,
+      "height": 520,
+      "label": "Client Space"
+    },
+    {
+      "id": "group-risks",
+      "type": "group",
+      "x": 760,
+      "y": 360,
+      "width": 280,
+      "height": 220,
+      "label": "Risks"
+    },
+    {
+      "id": "node-principle-ownership",
+      "type": "text",
+      "x": 80,
+      "y": 120,
+      "width": 220,
+      "height": 120,
+      "text": "Ownership over handoff"
+    },
+    {
+      "id": "node-principle-feedback",
+      "type": "text",
+      "x": 320,
+      "y": 220,
+      "width": 220,
+      "height": 120,
+      "text": "Short feedback loops"
+    },
+    {
+      "id": "node-client-context",
+      "type": "text",
+      "x": 760,
+      "y": 160,
+      "width": 240,
+      "height": 120,
+      "text": "Large enterprise release process"
+    },
+    {
+      "id": "node-risk-approval",
+      "type": "text",
+      "x": 800,
+      "y": 400,
+      "width": 180,
+      "height": 100,
+      "text": "Approval latency"
+    },
+    {
+      "id": "node-risk-ambiguity",
+      "type": "text",
+      "x": 800,
+      "y": 520,
+      "width": 180,
+      "height": 100,
+      "text": "Role ambiguity"
+    },
+    {
+      "id": "node-outside",
+      "type": "text",
+      "x": 1280,
+      "y": 140,
+      "width": 220,
+      "height": 120,
+      "text": "Independent note"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "fromNode": "node-principle-ownership",
+      "fromSide": "right",
+      "toNode": "node-client-context",
+      "toSide": "left"
+    },
+    {
+      "id": "edge-2",
+      "fromNode": "node-client-context",
+      "fromSide": "bottom",
+      "toNode": "node-risk-approval",
+      "toSide": "top"
+    },
+    {
+      "id": "edge-3",
+      "fromNode": "node-risk-approval",
+      "fromSide": "bottom",
+      "toNode": "node-risk-ambiguity",
+      "toSide": "top"
+    },
+    {
+      "id": "edge-4",
+      "fromNode": "node-principle-feedback",
+      "fromSide": "right",
+      "toNode": "node-outside",
+      "toSide": "left"
+    }
+  ]
+}

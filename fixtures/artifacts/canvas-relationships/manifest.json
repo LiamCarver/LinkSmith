@@ -1,7 +1,8 @@
 {
   "schema": "../../../schemas/canvas-relationships.schema.json",
   "valid": [
-    "valid/minimal.valid.json"
+    "valid/minimal.valid.json",
+    "valid/realistic-nested-groups.valid.json"
   ],
   "invalid": [
     "invalid/missing-edges.invalid.json"

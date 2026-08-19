@@ -28,10 +28,19 @@ Use this before implementation starts.
 ## Examples And Tests
 
 - Expected example fixtures are identified.
+- Expected service fixtures under `fixtures/services/<service-id>/` are identified.
 - Expected schema updates are identified.
 - Expected deterministic unit tests or golden tests are identified.
+- Expected high-fidelity contract test is identified.
+- Expected container execution path is identified.
+- A plan exists for a meaningful red test before implementation.
 
 ## Review Readiness
 
 - The design doc is ready for review before code begins.
 - Open questions are visible instead of being hidden in implementation.
+
+## Post-Implementation Reflection
+
+- The implementation captures what `linksmith-core` helped with.
+- The implementation captures any core friction that should inform future design.
