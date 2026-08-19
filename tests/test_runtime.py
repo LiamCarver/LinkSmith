@@ -8,6 +8,7 @@ from pathlib import Path, PurePath
 from linksmith_core.errors import ConfigurationError, SchemaDependencyError
 from linksmith_core.models import (
     JsonOutput,
+    MarkdownOutput,
     MarkdownDirectoryOutput,
     MarkdownDocument,
     PortContract,
@@ -123,6 +124,92 @@ class RuntimeTests(unittest.TestCase):
         validator = SchemaValidator(base_dir=Path("."))
         with self.assertRaises(SchemaDependencyError):
             validator.validate({"a": 1}, "schemas/registry.schema.json")
+
+    def test_output_type_mismatch_raises(self) -> None:
+        class InvalidOutputService:
+            contract = ServiceContract(
+                service_id="invalid-output-service",
+                inputs=(
+                    PortContract(name="source", type="json", mode="file", cardinality="one"),
+                ),
+                outputs=(
+                    PortContract(name="result", type="json", mode="file", cardinality="one"),
+                ),
+            )
+
+            def execute(self, inputs, context):
+                return {
+                    "result": MarkdownOutput(
+                        relative_path=PurePath("result.md"),
+                        text="not json",
+                    )
+                }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            input_file = root / "input.json"
+            input_file.write_text(json.dumps({"value": 42}), encoding="utf-8")
+            with self.assertRaises(ConfigurationError):
+                run_service(
+                    InvalidOutputService(),
+                    ServiceRunRequest(inputs={"source": input_file}, output_root=root / "out"),
+                )
+
+    def test_optional_output_can_be_omitted(self) -> None:
+        class OptionalOutputService:
+            contract = ServiceContract(
+                service_id="optional-output-service",
+                inputs=(
+                    PortContract(name="source", type="json", mode="file", cardinality="one"),
+                ),
+                outputs=(
+                    PortContract(
+                        name="result",
+                        type="json",
+                        mode="file",
+                        cardinality="one",
+                        required=False,
+                    ),
+                ),
+            )
+
+            def execute(self, inputs, context):
+                return {}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            input_file = root / "input.json"
+            input_file.write_text(json.dumps({"value": 42}), encoding="utf-8")
+            result = run_service(
+                OptionalOutputService(),
+                ServiceRunRequest(inputs={"source": input_file}, output_root=root / "out"),
+            )
+            self.assertEqual(result.written_outputs["result"], tuple())
+
+    def test_required_many_output_cannot_be_empty(self) -> None:
+        class EmptyManyOutputService:
+            contract = ServiceContract(
+                service_id="empty-many-output-service",
+                inputs=(
+                    PortContract(name="source", type="json", mode="file", cardinality="one"),
+                ),
+                outputs=(
+                    PortContract(name="result", type="json", mode="file", cardinality="many"),
+                ),
+            )
+
+            def execute(self, inputs, context):
+                return {"result": tuple()}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            input_file = root / "input.json"
+            input_file.write_text(json.dumps({"value": 42}), encoding="utf-8")
+            with self.assertRaises(ConfigurationError):
+                run_service(
+                    EmptyManyOutputService(),
+                    ServiceRunRequest(inputs={"source": input_file}, output_root=root / "out"),
+                )
 
 
 if __name__ == "__main__":
