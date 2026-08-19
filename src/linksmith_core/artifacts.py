@@ -26,6 +26,17 @@ from .models import (
 )
 
 
+def output_matches_port_contract(port: PortContract, output: ProducedArtifact) -> bool:
+    if port.mode == "directory":
+        return isinstance(output, MarkdownDirectoryOutput) and _infer_artifact_kind(port.type) == "markdown"
+    artifact_kind = _infer_artifact_kind(port.type)
+    if artifact_kind == "json":
+        return isinstance(output, JsonOutput)
+    if artifact_kind == "markdown":
+        return isinstance(output, MarkdownOutput)
+    return False
+
+
 def load_port_inputs(port: PortContract, provided: Path | tuple[Path, ...]) -> tuple[LoadedArtifact, ...]:
     paths = _normalize_paths(provided)
     if port.cardinality == "one" and len(paths) != 1:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from .artifacts import load_port_inputs, write_port_outputs
+from .artifacts import load_port_inputs, output_matches_port_contract, write_port_outputs
 from .errors import ConfigurationError, ServiceExecutionError
 from .logging import log_stage
 from .models import (
@@ -87,9 +87,23 @@ def _write_outputs(
     written: dict[str, tuple[object, ...]] = {}
     for port in ports:
         if port.name not in raw_outputs:
-            raise ConfigurationError(f"Service did not return required output port '{port.name}'.")
+            if port.required:
+                raise ConfigurationError(f"Service did not return required output port '{port.name}'.")
+            written[port.name] = tuple()
+            continue
         payload = raw_outputs[port.name]
-        for item in _iter_outputs(payload):
+        items = _iter_outputs(payload)
+        if not items:
+            if port.required:
+                raise ConfigurationError(f"Output port '{port.name}' did not produce any artifacts.")
+            written[port.name] = tuple()
+            continue
+        for item in items:
+            if not output_matches_port_contract(port, item):
+                raise ConfigurationError(
+                    f"Output port '{port.name}' returned '{type(item).__name__}', "
+                    f"which does not match declared type '{port.type}' and mode '{port.mode}'."
+                )
             if port.schema_ref is not None and isinstance(item, JsonOutput):
                 validator.validate(item.data, port.schema_ref)
             if isinstance(item, MarkdownDirectoryOutput) and port.mode != "directory":
