@@ -9,6 +9,7 @@ from pathlib import Path
 
 from linksmith_engine.engine import PipelineRunRequest, run_pipeline
 from linksmith_engine.runtime_loader import load_runtime_config, load_service_runner
+from linksmith_engine.service_runner import ServiceRunnerResult
 
 
 class EngineDockerTests(unittest.TestCase):
@@ -71,6 +72,66 @@ class EngineDockerTests(unittest.TestCase):
             payload = json.loads(output_file.read_text(encoding="utf-8"))
             self.assertEqual(payload["groups"][0]["id"], "group-one")
             self.assertEqual(payload["groups"][0]["nodes"][0]["id"], "node-one")
+
+    def test_run_pipeline_routes_real_docker_output_into_downstream_fake_service(self) -> None:
+        if shutil.which("docker") is None:
+            self.skipTest("Docker is not available in PATH.")
+
+        repo_root = Path(__file__).resolve().parents[1]
+        image_tag = "linksmith-obsidian-canvas-to-relationships:engine-test"
+        subprocess.run(
+            [
+                "docker",
+                "build",
+                "-f",
+                str(repo_root / "services" / "obsidian-canvas-to-relationships" / "Dockerfile"),
+                "-t",
+                image_tag,
+                str(repo_root),
+            ],
+            check=True,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            registry_path = root / "registry.json"
+            pipeline_path = root / "pipeline.json"
+            runtime_config_path = root / "runtime.json"
+            input_canvas = root / "input.canvas"
+            registry_path.write_text(json.dumps(_mixed_registry_payload()), encoding="utf-8")
+            pipeline_path.write_text(json.dumps(_mixed_pipeline_payload()), encoding="utf-8")
+            runtime_config_path.write_text(json.dumps(_runtime_payload(image_tag)), encoding="utf-8")
+            input_canvas.write_text(
+                json.dumps(
+                    {
+                        "nodes": [
+                            {"id": "group-one", "type": "group", "x": 0, "y": 0, "width": 200, "height": 200, "label": "Group"},
+                            {"id": "node-one", "type": "text", "x": 10, "y": 20, "width": 100, "height": 50, "text": "Hello"},
+                        ],
+                        "edges": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            docker_runner = load_service_runner(load_runtime_config(runtime_config_path, validate_schema=False))
+            result = run_pipeline(
+                PipelineRunRequest(
+                    pipeline_path=pipeline_path,
+                    registry_path=registry_path,
+                    pipeline_inputs={"canvas": input_canvas},
+                    run_root=root / "runs",
+                    run_id="run-002",
+                    validate_schema=False,
+                    service_runner=MixedServiceRunner(docker_runner=docker_runner),
+                )
+            )
+
+            output_file = result.outputs["question_bundle"][0]
+            payload = json.loads(output_file.read_text(encoding="utf-8"))
+            self.assertEqual(payload["groupCount"], 1)
+            self.assertEqual(payload["ungroupedNodeCount"], 0)
+            self.assertEqual(payload["questions"][0], "Which principle best fits group-one?")
 
 
 def _registry_payload() -> dict[str, object]:
@@ -142,6 +203,88 @@ def _runtime_payload(image_tag: str) -> dict[str, object]:
             }
         }
     }
+
+
+def _mixed_registry_payload() -> dict[str, object]:
+    return {
+        "services": [
+            {
+                "id": "obsidian-canvas-to-relationships",
+                "kind": "transform",
+                "deterministic": True,
+                "description": "Convert an Obsidian canvas file into relationships JSON.",
+                "entrypoint": "docker://obsidian-canvas-to-relationships",
+                "inputs": [
+                    {"name": "canvas", "type": "obsidian-canvas", "mode": "file", "cardinality": "one"}
+                ],
+                "outputs": [
+                    {"name": "relationships", "type": "canvas-relationships", "mode": "file", "cardinality": "one"}
+                ],
+            },
+            {
+                "id": "build-question-bundle",
+                "kind": "transform",
+                "deterministic": True,
+                "description": "Build question bundle from relationships JSON.",
+                "entrypoint": "python://build-question-bundle",
+                "inputs": [
+                    {"name": "relationships", "type": "canvas-relationships", "mode": "file", "cardinality": "one"}
+                ],
+                "outputs": [
+                    {"name": "question_bundle", "type": "questions-json", "mode": "file", "cardinality": "one"}
+                ],
+            }
+        ]
+    }
+
+
+def _mixed_pipeline_payload() -> dict[str, object]:
+    return {
+        "id": "canvas-question-bundle",
+        "inputs": [
+            {"name": "canvas", "type": "obsidian-canvas", "mode": "file", "cardinality": "one"}
+        ],
+        "outputs": [
+            {"name": "question_bundle", "type": "questions-json", "mode": "file", "cardinality": "one"}
+        ],
+        "steps": [
+            {"id": "normalize", "invocations": [{"id": "canvas", "service": "obsidian-canvas-to-relationships"}]},
+            {"id": "bundle", "invocations": [{"id": "questions", "service": "build-question-bundle"}]}
+        ],
+        "edges": [
+            {"from": "pipeline:input.canvas", "to": "normalize.canvas.canvas"},
+            {"from": "normalize.canvas.relationships", "to": "bundle.questions.relationships"},
+            {"from": "bundle.questions.question_bundle", "to": "pipeline:output.question_bundle"}
+        ],
+    }
+
+
+class MixedServiceRunner:
+    def __init__(self, *, docker_runner) -> None:
+        self._docker_runner = docker_runner
+
+    def run(self, request):
+        if request.service_id == "obsidian-canvas-to-relationships":
+            return self._docker_runner.run(request)
+        if request.service_id == "build-question-bundle":
+            relationships = json.loads(request.inputs["relationships"][0].read_text(encoding="utf-8"))
+            request.output_root.mkdir(parents=True, exist_ok=True)
+            output_file = request.output_root / "question_bundle" / "question-bundle.json"
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            output_file.write_text(
+                json.dumps(
+                    {
+                        "groupCount": len(relationships["groups"]),
+                        "ungroupedNodeCount": len(relationships["ungroupedNodes"]),
+                        "questions": ["Which principle best fits group-one?"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            request.log_path.parent.mkdir(parents=True, exist_ok=True)
+            request.log_path.write_text("mixed-runner ok", encoding="utf-8")
+            return ServiceRunnerResult(outputs={"question_bundle": (output_file,)}, exit_code=0)
+        raise AssertionError(f"Unexpected service id: {request.service_id}")
 
 
 if __name__ == "__main__":

@@ -18,15 +18,53 @@ from linksmith_engine.validator import validate_pipeline_semantics
 class FakeServiceRunner:
     def run(self, request):
         request.output_root.mkdir(parents=True, exist_ok=True)
-        output_file = request.output_root / "relationships" / "relationships.json"
-        output_file.parent.mkdir(parents=True, exist_ok=True)
-        output_file.write_text(
-            json.dumps({"groups": [], "ungroupedNodes": [], "edges": []}),
-            encoding="utf-8",
-        )
+        if request.service_id == "obsidian-canvas-to-relationships":
+            output_file = request.output_root / "relationships" / "relationships.json"
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            output_file.write_text(
+                json.dumps({"groups": [], "ungroupedNodes": [], "edges": []}),
+                encoding="utf-8",
+            )
+            outputs = {"relationships": (output_file,)}
+        elif request.service_id == "summarize-principles":
+            output_file = request.output_root / "summary" / "principles-summary.json"
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            output_file.write_text(
+                json.dumps({"source": "principles", "summary": "Use clear principles."}),
+                encoding="utf-8",
+            )
+            outputs = {"summary": (output_file,)}
+        elif request.service_id == "summarize-jobs":
+            output_file = request.output_root / "summary" / "jobs-summary.json"
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            output_file.write_text(
+                json.dumps({"source": "jobs", "summary": "Team needs clearer role shaping."}),
+                encoding="utf-8",
+            )
+            outputs = {"summary": (output_file,)}
+        elif request.service_id == "build-question-set":
+            principles = json.loads(request.inputs["principles_summary"][0].read_text(encoding="utf-8"))
+            jobs = json.loads(request.inputs["jobs_summary"][0].read_text(encoding="utf-8"))
+            output_file = request.output_root / "questions" / "questions.json"
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            output_file.write_text(
+                json.dumps(
+                    {
+                        "sources": [principles["source"], jobs["source"]],
+                        "questions": [
+                            "How should the principles shape role design?",
+                            "Where are the biggest role ambiguity risks?"
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            outputs = {"questions": (output_file,)}
+        else:
+            raise AssertionError(f"Unexpected fake service id: {request.service_id}")
         request.log_path.parent.mkdir(parents=True, exist_ok=True)
         request.log_path.write_text("fake-runner ok", encoding="utf-8")
-        return ServiceRunnerResult(outputs={"relationships": (output_file,)}, exit_code=0)
+        return ServiceRunnerResult(outputs=outputs, exit_code=0)
 
 
 class EngineTests(unittest.TestCase):
@@ -86,6 +124,39 @@ class EngineTests(unittest.TestCase):
             self.assertEqual(config.image, "linksmith-obsidian-canvas-to-relationships:test")
             self.assertEqual(config.input_arguments["canvas"], "--input")
             self.assertEqual(config.output_file_names["relationships"], "relationships.json")
+
+    def test_run_pipeline_routes_multiple_invocations_into_downstream_service(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            registry_path = root / "registry.json"
+            pipeline_path = root / "pipeline.json"
+            principles_file = root / "principles.md"
+            jobs_file = root / "jobs.md"
+            registry_path.write_text(json.dumps(_multi_service_registry_payload()), encoding="utf-8")
+            pipeline_path.write_text(json.dumps(_multi_service_pipeline_payload()), encoding="utf-8")
+            principles_file.write_text("# Principles\n- Clarity matters\n", encoding="utf-8")
+            jobs_file.write_text("# Roles\n- Delivery lead\n", encoding="utf-8")
+
+            result = run_pipeline(
+                PipelineRunRequest(
+                    pipeline_path=pipeline_path,
+                    registry_path=registry_path,
+                    pipeline_inputs={
+                        "principles": principles_file,
+                        "jobs": jobs_file,
+                    },
+                    run_root=root / "runs",
+                    service_runner=FakeServiceRunner(),
+                    run_id="run-multi-001",
+                    validate_schema=False,
+                )
+            )
+
+            output_file = result.outputs["questions"][0]
+            payload = json.loads(output_file.read_text(encoding="utf-8"))
+            self.assertEqual(payload["sources"], ["principles", "jobs"])
+            self.assertEqual(len(payload["questions"]), 2)
+            self.assertEqual(len(result.invocation_manifests), 3)
 
     def test_docker_service_runner_places_service_arguments_after_image(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -240,6 +311,88 @@ def _runtime_payload() -> dict[str, object]:
                 }
             }
         }
+    }
+
+
+def _multi_service_registry_payload() -> dict[str, object]:
+    return {
+        "services": [
+            {
+                "id": "summarize-principles",
+                "kind": "transform",
+                "deterministic": True,
+                "description": "Summarize company principles into JSON.",
+                "entrypoint": "docker://summarize-principles",
+                "inputs": [
+                    {"name": "principles", "type": "markdown-document", "mode": "file", "cardinality": "one"}
+                ],
+                "outputs": [
+                    {"name": "summary", "type": "summary-json", "mode": "file", "cardinality": "one"}
+                ],
+            },
+            {
+                "id": "summarize-jobs",
+                "kind": "transform",
+                "deterministic": True,
+                "description": "Summarize job descriptions into JSON.",
+                "entrypoint": "docker://summarize-jobs",
+                "inputs": [
+                    {"name": "jobs", "type": "markdown-document", "mode": "file", "cardinality": "one"}
+                ],
+                "outputs": [
+                    {"name": "summary", "type": "summary-json", "mode": "file", "cardinality": "one"}
+                ],
+            },
+            {
+                "id": "build-question-set",
+                "kind": "transform",
+                "deterministic": True,
+                "description": "Combine summaries into a question set.",
+                "entrypoint": "docker://build-question-set",
+                "inputs": [
+                    {"name": "principles_summary", "type": "summary-json", "mode": "file", "cardinality": "one"},
+                    {"name": "jobs_summary", "type": "summary-json", "mode": "file", "cardinality": "one"}
+                ],
+                "outputs": [
+                    {"name": "questions", "type": "questions-json", "mode": "file", "cardinality": "one"}
+                ],
+            },
+        ]
+    }
+
+
+def _multi_service_pipeline_payload() -> dict[str, object]:
+    return {
+        "id": "client-question-pipeline",
+        "inputs": [
+            {"name": "principles", "type": "markdown-document", "mode": "file", "cardinality": "one"},
+            {"name": "jobs", "type": "markdown-document", "mode": "file", "cardinality": "one"}
+        ],
+        "outputs": [
+            {"name": "questions", "type": "questions-json", "mode": "file", "cardinality": "one"}
+        ],
+        "steps": [
+            {
+                "id": "summaries",
+                "invocations": [
+                    {"id": "principles", "service": "summarize-principles"},
+                    {"id": "jobs", "service": "summarize-jobs"}
+                ]
+            },
+            {
+                "id": "questioning",
+                "invocations": [
+                    {"id": "combine", "service": "build-question-set"}
+                ]
+            }
+        ],
+        "edges": [
+            {"from": "pipeline:input.principles", "to": "summaries.principles.principles"},
+            {"from": "pipeline:input.jobs", "to": "summaries.jobs.jobs"},
+            {"from": "summaries.principles.summary", "to": "questioning.combine.principles_summary"},
+            {"from": "summaries.jobs.summary", "to": "questioning.combine.jobs_summary"},
+            {"from": "questioning.combine.questions", "to": "pipeline:output.questions"}
+        ]
     }
 
 
