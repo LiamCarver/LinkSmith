@@ -142,6 +142,15 @@ Responsibilities:
 - define the engine-facing interface for invoking a service
 - keep orchestration code independent from the concrete invocation backend
 
+### `linksmith_engine.runtime_loader`
+
+Responsibilities:
+
+- read declarative engine runtime config JSON
+- validate runtime config structure against schema
+- resolve runtime service definitions into a concrete service runner
+- keep Docker image and argument wiring out of pipeline definitions and tests
+
 Expected first implementation:
 
 - `DockerServiceRunner`
@@ -228,6 +237,8 @@ At minimum, the engine must know:
 - which config values belong to the invocation
 
 The service container should not need pipeline-level awareness. It should only see its own invocation contract.
+
+In the current direction, Docker-specific image and argument wiring belongs in a separate runtime config document rather than in the pipeline JSON itself.
 
 ## Data Flow
 

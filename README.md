@@ -57,6 +57,7 @@ The first engine slice is intentionally narrow:
 - local Python orchestration
 - pipeline and registry loading
 - semantic pipeline validation
+- declarative runtime-config loading for Docker-backed services
 - deterministic host run-folder creation
 - service execution through a runner abstraction
 - Docker-backed service execution for containerized services

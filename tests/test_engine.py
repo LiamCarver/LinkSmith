@@ -9,6 +9,7 @@ from unittest.mock import patch
 from linksmith_engine.engine import PipelineRunRequest, run_pipeline
 from linksmith_engine.pipeline_loader import load_pipeline_definition
 from linksmith_engine.registry_loader import load_registry_document
+from linksmith_engine.runtime_loader import load_runtime_config, load_service_runner
 from linksmith_engine.service_runner import DockerServiceConfig, DockerServiceRunner, ServiceRunnerRequest, ServiceRunnerResult
 from linksmith_core.models import PortContract
 from linksmith_engine.validator import validate_pipeline_semantics
@@ -69,6 +70,22 @@ class EngineTests(unittest.TestCase):
             self.assertEqual(json.loads(output_file.read_text(encoding="utf-8")), {"groups": [], "ungroupedNodes": [], "edges": []})
             self.assertTrue(result.run_paths.run_manifest_file.exists())
             self.assertEqual(len(result.invocation_manifests), 1)
+
+    def test_load_runtime_config_resolves_docker_service_runner(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            runtime_config_path = root / "runtime.json"
+            runtime_config_path.write_text(json.dumps(_runtime_payload()), encoding="utf-8")
+
+            runtime_config = load_runtime_config(runtime_config_path, validate_schema=False)
+            runner = load_service_runner(runtime_config)
+
+            self.assertEqual(runtime_config.runner_kind, "docker")
+            self.assertIsInstance(runner, DockerServiceRunner)
+            config = runner._service_configs["obsidian-canvas-to-relationships"]
+            self.assertEqual(config.image, "linksmith-obsidian-canvas-to-relationships:test")
+            self.assertEqual(config.input_arguments["canvas"], "--input")
+            self.assertEqual(config.output_file_names["relationships"], "relationships.json")
 
     def test_docker_service_runner_places_service_arguments_after_image(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -202,6 +219,27 @@ def _pipeline_payload() -> dict[str, object]:
                 "to": "pipeline:output.relationships",
             },
         ],
+    }
+
+
+def _runtime_payload() -> dict[str, object]:
+    return {
+        "runner": {
+            "kind": "docker",
+            "services": {
+                "obsidian-canvas-to-relationships": {
+                    "image": "linksmith-obsidian-canvas-to-relationships:test",
+                    "inputArguments": {"canvas": "--input"},
+                    "outputDirArgument": "--output-dir",
+                    "outputFileNameArguments": {"relationships": "--output-file-name"},
+                    "outputFileNames": {"relationships": "relationships.json"},
+                    "schemaBaseDirArgument": "--schema-base-dir",
+                    "schemaBaseDirValue": "/app",
+                    "inputMountRoot": "/data/inputs",
+                    "outputMountRoot": "/data/output"
+                }
+            }
+        }
     }
 
 

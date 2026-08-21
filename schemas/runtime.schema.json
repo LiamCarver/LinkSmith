@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://linksmith.dev/schemas/runtime.schema.json",
+  "title": "LinkSmith Engine Runtime Configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["runner"],
+  "properties": {
+    "runner": {
+      "$ref": "#/$defs/runner"
+    }
+  },
+  "$defs": {
+    "runner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "services"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "docker"
+        },
+        "services": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "pattern": "^[a-z0-9][a-z0-9-]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/dockerService"
+          }
+        }
+      }
+    },
+    "dockerService": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["image", "inputArguments", "outputDirArgument"],
+      "properties": {
+        "image": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inputArguments": {
+          "$ref": "#/$defs/stringMap"
+        },
+        "outputDirArgument": {
+          "type": "string",
+          "minLength": 1
+        },
+        "outputFileNameArguments": {
+          "$ref": "#/$defs/stringMap"
+        },
+        "outputFileNames": {
+          "$ref": "#/$defs/stringMap"
+        },
+        "schemaBaseDirArgument": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schemaBaseDirValue": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inputMountRoot": {
+          "type": "string",
+          "minLength": 1
+        },
+        "outputMountRoot": {
+          "type": "string",
+          "minLength": 1
+        },
+        "extraArgs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "stringMap": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}

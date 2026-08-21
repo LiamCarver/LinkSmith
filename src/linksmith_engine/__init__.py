@@ -12,6 +12,7 @@ from .models import (
 )
 from .pipeline_loader import load_pipeline_definition
 from .registry_loader import load_registry_document
+from .runtime_loader import load_runtime_config, load_service_runner
 from .run_layout import RunPaths, create_run_layout
 from .service_runner import DockerServiceConfig, DockerServiceRunner, ServiceRunner, ServiceRunnerResult
 from .validator import validate_pipeline_semantics
@@ -35,7 +36,9 @@ __all__ = [
     "StepDefinition",
     "create_run_layout",
     "load_pipeline_definition",
+    "load_runtime_config",
     "load_registry_document",
+    "load_service_runner",
     "run_pipeline",
     "validate_pipeline_semantics",
 ]

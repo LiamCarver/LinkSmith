@@ -25,6 +25,26 @@ class EngineRegistryDocument:
 
 
 @dataclass(frozen=True)
+class DockerRuntimeServiceDefinition:
+    image: str
+    input_arguments: dict[str, str]
+    output_dir_argument: str
+    output_file_name_arguments: dict[str, str] = field(default_factory=dict)
+    output_file_names: dict[str, str] = field(default_factory=dict)
+    schema_base_dir_argument: str | None = None
+    schema_base_dir_value: str | None = None
+    input_mount_root: str = "/workspace/inputs"
+    output_mount_root: str = "/workspace/outputs"
+    extra_args: tuple[str, ...] = tuple()
+
+
+@dataclass(frozen=True)
+class EngineRuntimeConfig:
+    runner_kind: Literal["docker"]
+    docker_services: dict[str, DockerRuntimeServiceDefinition]
+
+
+@dataclass(frozen=True)
 class ServicePortRef:
     service_port: str
     alias: str | None = None
