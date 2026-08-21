@@ -1,0 +1,285 @@
+from __future__ import annotations
+
+import json
+import shutil
+import uuid
+from pathlib import Path
+from typing import Mapping
+
+from linksmith_core.errors import ConfigurationError
+from linksmith_core.models import PortContract
+
+from .manifest import write_invocation_manifest, write_run_manifest
+from .models import (
+    EndpointReference,
+    EnginePipelineDefinition,
+    EngineRegistryDocument,
+    InvocationDefinition,
+    InvocationManifest,
+    RunManifest,
+)
+from .pipeline_loader import load_pipeline_definition
+from .registry_loader import load_registry_document
+from .run_layout import RunPaths, create_run_layout
+from .service_runner import ServiceRunner, ServiceRunnerRequest
+from .validator import validate_pipeline_semantics
+
+
+class PipelineRunRequest:
+    def __init__(
+        self,
+        *,
+        pipeline_path: Path,
+        registry_path: Path,
+        pipeline_inputs: Mapping[str, Path | tuple[Path, ...]],
+        run_root: Path,
+        service_runner: ServiceRunner,
+        run_id: str | None = None,
+        validate_schema: bool = False,
+    ) -> None:
+        self.pipeline_path = pipeline_path
+        self.registry_path = registry_path
+        self.pipeline_inputs = dict(pipeline_inputs)
+        self.run_root = run_root
+        self.service_runner = service_runner
+        self.run_id = run_id or f"run-{uuid.uuid4().hex[:8]}"
+        self.validate_schema = validate_schema
+
+
+class PipelineRunResult:
+    def __init__(
+        self,
+        *,
+        run_paths: RunPaths,
+        pipeline: EnginePipelineDefinition,
+        outputs: Mapping[str, tuple[Path, ...]],
+        invocation_manifests: tuple[Path, ...],
+    ) -> None:
+        self.run_paths = run_paths
+        self.pipeline = pipeline
+        self.outputs = dict(outputs)
+        self.invocation_manifests = invocation_manifests
+
+
+def run_pipeline(request: PipelineRunRequest) -> PipelineRunResult:
+    registry = load_registry_document(
+        request.registry_path,
+        validate_schema=request.validate_schema,
+        schema_base_dir=request.registry_path.parent.parent if request.validate_schema else None,
+    )
+    pipeline = load_pipeline_definition(
+        request.pipeline_path,
+        validate_schema=request.validate_schema,
+        schema_base_dir=request.pipeline_path.parent.parent if request.validate_schema else None,
+    )
+    validate_pipeline_semantics(pipeline, registry)
+    run_paths = create_run_layout(request.run_root, request.run_id, request.pipeline_path, request.registry_path)
+    pipeline_input_artifacts = _materialize_pipeline_inputs(run_paths, pipeline, request.pipeline_inputs)
+
+    service_index = {service.service_id: service for service in registry.services}
+    produced_artifacts: dict[str, tuple[Path, ...]] = {}
+    invocation_manifest_paths: list[Path] = []
+    remaining = {(step.step_id, invocation.invocation_id): invocation for step in pipeline.steps for invocation in step.invocations}
+
+    while remaining:
+        progressed = False
+        for step in pipeline.steps:
+            for invocation in step.invocations:
+                key = (step.step_id, invocation.invocation_id)
+                if key not in remaining:
+                    continue
+                incoming_edges = [edge for edge in pipeline.edges if edge.to_endpoint.startswith(f"{step.step_id}.{invocation.invocation_id}.")]
+                if not _all_sources_ready(incoming_edges, pipeline_input_artifacts, produced_artifacts):
+                    continue
+                service = service_index[invocation.service_id]
+                prepared_inputs = _prepare_invocation_inputs(
+                    run_paths=run_paths,
+                    step_id=step.step_id,
+                    invocation=invocation,
+                    service_inputs={port.name: port for port in service.contract.inputs},
+                    incoming_edges=incoming_edges,
+                    pipeline_input_artifacts=pipeline_input_artifacts,
+                    produced_artifacts=produced_artifacts,
+                )
+                runner_request = ServiceRunnerRequest(
+                    step_id=step.step_id,
+                    invocation_id=invocation.invocation_id,
+                    service_id=invocation.service_id,
+                    inputs=prepared_inputs,
+                    input_contracts={port.name: port for port in service.contract.inputs},
+                    output_contracts={port.name: port for port in service.contract.outputs},
+                    output_root=run_paths.invocation_outputs_dir(step.step_id, invocation.invocation_id),
+                    config=invocation.config,
+                    log_path=run_paths.invocation_log_file(step.step_id, invocation.invocation_id),
+                )
+                runner_result = request.service_runner.run(runner_request)
+                manifest = InvocationManifest(
+                    step_id=step.step_id,
+                    invocation_id=invocation.invocation_id,
+                    service_id=invocation.service_id,
+                    status="succeeded",
+                    inputs={name: tuple(str(path) for path in paths) for name, paths in prepared_inputs.items()},
+                    outputs={name: tuple(str(path) for path in paths) for name, paths in runner_result.outputs.items()},
+                    exit_code=runner_result.exit_code,
+                    log_path=str(run_paths.invocation_log_file(step.step_id, invocation.invocation_id)),
+                )
+                manifest_path = run_paths.invocation_manifest_file(step.step_id, invocation.invocation_id)
+                write_invocation_manifest(manifest_path, manifest)
+                invocation_manifest_paths.append(manifest_path)
+                for port_name, paths in runner_result.outputs.items():
+                    produced_artifacts[f"{step.step_id}.{invocation.invocation_id}.{port_name}"] = paths
+                del remaining[key]
+                progressed = True
+        if not progressed:
+            unresolved = ", ".join(f"{step_id}.{invocation_id}" for step_id, invocation_id in remaining)
+            raise ConfigurationError(f"Pipeline execution could not progress. Remaining invocations: {unresolved}")
+
+    pipeline_outputs = _materialize_pipeline_outputs(run_paths, pipeline, pipeline_input_artifacts, produced_artifacts)
+    run_manifest = RunManifest(
+        pipeline_id=pipeline.pipeline_id,
+        run_id=run_paths.run_id,
+        status="succeeded",
+        invocation_manifests=tuple(str(path) for path in invocation_manifest_paths),
+        outputs={name: tuple(str(path) for path in paths) for name, paths in pipeline_outputs.items()},
+    )
+    write_run_manifest(run_paths.run_manifest_file, run_manifest)
+    return PipelineRunResult(
+        run_paths=run_paths,
+        pipeline=pipeline,
+        outputs=pipeline_outputs,
+        invocation_manifests=tuple(invocation_manifest_paths),
+    )
+
+
+def _materialize_pipeline_inputs(
+    run_paths: RunPaths,
+    pipeline: EnginePipelineDefinition,
+    provided_inputs: Mapping[str, Path | tuple[Path, ...]],
+) -> dict[str, tuple[Path, ...]]:
+    materialized: dict[str, tuple[Path, ...]] = {}
+    for port in pipeline.inputs:
+        raw_value = provided_inputs.get(port.name)
+        if raw_value is None:
+            raise ConfigurationError(f"Missing pipeline input '{port.name}'.")
+        source_paths = raw_value if isinstance(raw_value, tuple) else (raw_value,)
+        target_root = run_paths.inputs_dir / port.name
+        target_root.mkdir(parents=True, exist_ok=True)
+        copied = tuple(_copy_input_path(source_path, target_root) for source_path in source_paths)
+        materialized[f"pipeline:input.{port.name}"] = copied
+    return materialized
+
+
+def _copy_input_path(source_path: Path, target_root: Path) -> Path:
+    if source_path.is_file():
+        target_path = target_root / source_path.name
+        shutil.copy2(source_path, target_path)
+        return target_path
+    if source_path.is_dir():
+        target_path = target_root / source_path.name
+        if target_path.exists():
+            shutil.rmtree(target_path)
+        shutil.copytree(source_path, target_path)
+        return target_path
+    raise ConfigurationError(f"Input path does not exist: {source_path}")
+
+
+def _all_sources_ready(
+    incoming_edges,
+    pipeline_input_artifacts: Mapping[str, tuple[Path, ...]],
+    produced_artifacts: Mapping[str, tuple[Path, ...]],
+) -> bool:
+    for edge in incoming_edges:
+        if edge.from_endpoint.startswith("pipeline:input."):
+            if edge.from_endpoint not in pipeline_input_artifacts:
+                return False
+        elif edge.from_endpoint not in produced_artifacts:
+            return False
+    return True
+
+
+def _prepare_invocation_inputs(
+    *,
+    run_paths: RunPaths,
+    step_id: str,
+    invocation: InvocationDefinition,
+    service_inputs: Mapping[str, PortContract],
+    incoming_edges,
+    pipeline_input_artifacts: Mapping[str, tuple[Path, ...]],
+    produced_artifacts: Mapping[str, tuple[Path, ...]],
+) -> dict[str, tuple[Path, ...]]:
+    prepared: dict[str, tuple[Path, ...]] = {}
+    inputs_root = run_paths.invocation_inputs_dir(step_id, invocation.invocation_id)
+    inputs_root.mkdir(parents=True, exist_ok=True)
+    grouped_sources: dict[str, list[Path]] = {}
+    for edge in incoming_edges:
+        target_port = edge.to_endpoint.split(".")[-1]
+        sources = pipeline_input_artifacts.get(edge.from_endpoint) or produced_artifacts.get(edge.from_endpoint)
+        if sources is None:
+            raise ConfigurationError(f"Missing resolved source artifacts for '{edge.from_endpoint}'.")
+        grouped_sources.setdefault(target_port, []).extend(sources)
+
+    for port_name, sources in grouped_sources.items():
+        contract = service_inputs[port_name]
+        port_root = inputs_root / port_name
+        port_root.mkdir(parents=True, exist_ok=True)
+        if contract.mode == "file":
+            if len(sources) != 1:
+                raise ConfigurationError(f"Service input port '{port_name}' expects one source artifact.")
+            copied = (_copy_input_path(sources[0], port_root),)
+        elif contract.mode == "directory":
+            merged_root = port_root / "merged"
+            merged_root.mkdir(parents=True, exist_ok=True)
+            for source in sources:
+                if source.is_dir():
+                    for child in source.rglob("*"):
+                        if child.is_dir():
+                            continue
+                        relative = child.relative_to(source)
+                        target = merged_root / relative
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(child, target)
+                else:
+                    shutil.copy2(source, merged_root / source.name)
+            copied = (merged_root,)
+        else:
+            raise ConfigurationError(f"Engine does not yet support input mode '{contract.mode}' for invocation prep.")
+        prepared[port_name] = copied
+    return prepared
+
+
+def _materialize_pipeline_outputs(
+    run_paths: RunPaths,
+    pipeline: EnginePipelineDefinition,
+    pipeline_inputs: Mapping[str, tuple[Path, ...]],
+    produced_artifacts: Mapping[str, tuple[Path, ...]],
+) -> dict[str, tuple[Path, ...]]:
+    outputs: dict[str, tuple[Path, ...]] = {}
+    output_edges = [edge for edge in pipeline.edges if edge.to_endpoint.startswith("pipeline:output.")]
+    pipeline_output_contracts = {port.name: port for port in pipeline.outputs}
+    for edge in output_edges:
+        port_name = edge.to_endpoint.split(".", 1)[1]
+        sources = pipeline_inputs.get(edge.from_endpoint) or produced_artifacts.get(edge.from_endpoint)
+        if sources is None:
+            raise ConfigurationError(f"Missing source artifacts for pipeline output '{edge.to_endpoint}'.")
+        target_root = run_paths.outputs_dir / port_name
+        target_root.mkdir(parents=True, exist_ok=True)
+        copied = tuple(_copy_output_path(source, target_root) for source in sources)
+        contract = pipeline_output_contracts[port_name]
+        if contract.cardinality == "one" and len(copied) != 1:
+            raise ConfigurationError(f"Pipeline output '{port_name}' expects one artifact.")
+        outputs[port_name] = copied
+    return outputs
+
+
+def _copy_output_path(source: Path, target_root: Path) -> Path:
+    if source.is_file():
+        target_path = target_root / source.name
+        shutil.copy2(source, target_path)
+        return target_path
+    if source.is_dir():
+        target_path = target_root / source.name
+        if target_path.exists():
+            shutil.rmtree(target_path)
+        shutil.copytree(source, target_path)
+        return target_path
+    raise ConfigurationError(f"Output source path does not exist: {source}")

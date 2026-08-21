@@ -15,6 +15,7 @@ The repository currently starts with:
 - a pipeline definition contract
 - example registry and pipeline fixtures
 - an initial shared Python runtime package in `src/linksmith_core`
+- an initial local-Python engine package in `src/linksmith_engine`
 - Python standards and PR review guidance
 - service documentation standards and templates
 
@@ -48,6 +49,17 @@ The first concrete deterministic service is planned as:
 - `obsidian-canvas-to-relationships`
 
 It is intended to be container-first and reusable both as a standalone tool and as a future pipeline step.
+
+## Engine
+
+The first engine slice is intentionally narrow:
+
+- local Python orchestration
+- pipeline and registry loading
+- semantic pipeline validation
+- deterministic host run-folder creation
+- service execution through a runner abstraction
+- Docker-backed service execution for containerized services
 
 ## Review And Quality
 
