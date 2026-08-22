@@ -68,6 +68,25 @@ def validate_pipeline_semantics(
                 )
         incoming_edges[edge.to_endpoint].append(from_ref)
 
+    for step in pipeline.steps:
+        for invocation in step.invocations:
+            service = service_index.get(invocation.service_id)
+            if service is None:
+                continue
+            for port in service.contract.inputs:
+                endpoint = f"{step.step_id}.{invocation.invocation_id}.{port.name}"
+                if len(incoming_edges[endpoint]) == 0:
+                    errors.append(
+                        f"Required service input '{endpoint}' must have an incoming edge."
+                    )
+
+    for port in pipeline.outputs:
+        endpoint = f"pipeline:output.{port.name}"
+        if len(incoming_edges[endpoint]) == 0:
+            errors.append(
+                f"Declared pipeline output '{endpoint}' must have an incoming edge."
+            )
+
     if errors:
         raise PipelineValidationError(errors)
 

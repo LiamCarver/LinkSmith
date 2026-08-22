@@ -76,14 +76,20 @@ class DockerServiceRunner:
                     f"No input argument mapping is configured for service '{request.service_id}' port '{port_name}'."
                 )
             if port_contract.mode == "file":
-                if len(input_paths) != 1:
-                    raise ServiceRunnerError(
-                        f"Docker runner currently expects one prepared file for input port '{port_name}'."
-                    )
-                host_path = input_paths[0]
-                container_path = f"{service_config.input_mount_root}/{port_name}/{host_path.name}"
-                command.extend(["-v", f"{host_path}:{container_path}:ro"])
-                service_arguments.extend([argument_name, container_path])
+                if port_contract.cardinality == "many":
+                    host_path = _resolve_many_file_input_root(request.service_id, port_name, input_paths)
+                    container_path = f"{service_config.input_mount_root}/{port_name}"
+                    command.extend(["-v", f"{host_path}:{container_path}:ro"])
+                    service_arguments.extend([argument_name, container_path])
+                else:
+                    if len(input_paths) != 1:
+                        raise ServiceRunnerError(
+                            f"Docker runner currently expects one prepared file for input port '{port_name}'."
+                        )
+                    host_path = input_paths[0]
+                    container_path = f"{service_config.input_mount_root}/{port_name}/{host_path.name}"
+                    command.extend(["-v", f"{host_path}:{container_path}:ro"])
+                    service_arguments.extend([argument_name, container_path])
             elif port_contract.mode == "directory":
                 if len(input_paths) != 1:
                     raise ServiceRunnerError(
@@ -140,3 +146,12 @@ class DockerServiceRunner:
                     f"Docker runner does not support output mode '{port_contract.mode}' for port '{port_name}'."
                 )
         return ServiceRunnerResult(outputs=output_paths, exit_code=completed.returncode)
+
+
+def _resolve_many_file_input_root(service_id: str, port_name: str, input_paths: tuple[Path, ...]) -> Path:
+    parent_roots = {path.parent for path in input_paths}
+    if len(parent_roots) != 1:
+        raise ServiceRunnerError(
+            f"Prepared many-file input port '{port_name}' for service '{service_id}' must share one directory."
+        )
+    return next(iter(parent_roots))

@@ -195,11 +195,28 @@ def _materialize_pipeline_inputs(
         if raw_value is None:
             raise ConfigurationError(f"Missing pipeline input '{port.name}'.")
         source_paths = raw_value if isinstance(raw_value, tuple) else (raw_value,)
+        if port.cardinality == "one" and len(source_paths) != 1:
+            raise ConfigurationError(f"Pipeline input '{port.name}' expects one source artifact.")
+        if len(source_paths) == 0:
+            raise ConfigurationError(f"Pipeline input '{port.name}' requires at least one source artifact.")
+        _validate_pipeline_input_modes(port_name=port.name, expected_mode=port.mode, source_paths=source_paths)
         target_root = run_paths.inputs_dir / port.name
         target_root.mkdir(parents=True, exist_ok=True)
         copied = tuple(_copy_input_path(source_path, target_root) for source_path in source_paths)
         materialized[f"pipeline:input.{port.name}"] = copied
     return materialized
+
+
+def _validate_pipeline_input_modes(*, port_name: str, expected_mode: str, source_paths: tuple[Path, ...]) -> None:
+    if expected_mode == "file":
+        if any(not source_path.is_file() for source_path in source_paths):
+            raise ConfigurationError(f"Pipeline input '{port_name}' expects file artifacts.")
+        return
+    if expected_mode == "directory":
+        if any(not source_path.is_dir() for source_path in source_paths):
+            raise ConfigurationError(f"Pipeline input '{port_name}' expects directory artifacts.")
+        return
+    raise ConfigurationError(f"Engine does not yet support pipeline input mode '{expected_mode}'.")
 
 
 def _copy_input_path(source_path: Path, target_root: Path) -> Path:

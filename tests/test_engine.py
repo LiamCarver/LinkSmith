@@ -327,6 +327,70 @@ class EngineTests(unittest.TestCase):
             self.assertLess(image_index, command.index("--input"))
             self.assertEqual(command[0:3], ["docker", "run", "--rm"])
 
+    def test_docker_service_runner_mounts_many_file_input_as_port_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            input_root = root / "inputs" / "documents"
+            first_file = input_root / "principle-1.md"
+            second_file = input_root / "principle-2.md"
+            output_root = root / "outputs"
+            log_path = root / "runner.log"
+            input_root.mkdir(parents=True, exist_ok=True)
+            first_file.write_text("# One\n", encoding="utf-8")
+            second_file.write_text("# Two\n", encoding="utf-8")
+
+            request = ServiceRunnerRequest(
+                step_id="bundle",
+                invocation_id="all",
+                service_id="bundle-principles",
+                inputs={"documents": (first_file, second_file)},
+                input_contracts={
+                    "documents": PortContract(
+                        name="documents",
+                        type="markdown-document",
+                        mode="file",
+                        cardinality="many",
+                    )
+                },
+                output_contracts={
+                    "bundle": PortContract(
+                        name="bundle",
+                        type="summary-json",
+                        mode="file",
+                        cardinality="one",
+                    )
+                },
+                output_root=output_root,
+                config={},
+                log_path=log_path,
+            )
+            runner = DockerServiceRunner(
+                {
+                    "bundle-principles": DockerServiceConfig(
+                        image="example-image:latest",
+                        input_arguments={"documents": "--documents"},
+                        output_dir_argument="--output-dir",
+                        output_file_name_arguments={"bundle": "--output-file-name"},
+                        output_file_names={"bundle": "bundle.json"},
+                        input_mount_root="/data/inputs",
+                        output_mount_root="/data/output",
+                    )
+                }
+            )
+
+            with patch("linksmith_engine.service_runner.which", return_value="docker"), patch(
+                "linksmith_engine.service_runner.subprocess.run"
+            ) as mocked_run:
+                mocked_run.return_value.returncode = 0
+                mocked_run.return_value.stdout = "ok"
+
+                runner.run(request)
+
+            command = mocked_run.call_args.args[0]
+            self.assertIn(f"{input_root}:/data/inputs/documents:ro", command)
+            self.assertIn("--documents", command)
+            self.assertIn("/data/inputs/documents", command)
+
     def test_run_pipeline_writes_failed_manifests_for_downstream_failure(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -390,6 +454,68 @@ class EngineTests(unittest.TestCase):
 
             with self.assertRaises(PipelineValidationError):
                 validate_pipeline_semantics(pipeline, registry)
+
+    def test_semantic_validation_rejects_missing_required_invocation_input_and_pipeline_output_edges(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            registry_path = root / "registry.json"
+            pipeline_path = root / "pipeline.json"
+            registry_path.write_text(json.dumps(_registry_payload()), encoding="utf-8")
+            pipeline_path.write_text(json.dumps(_missing_edge_pipeline_payload()), encoding="utf-8")
+
+            registry = load_registry_document(registry_path, validate_schema=False)
+            pipeline = load_pipeline_definition(pipeline_path, validate_schema=False)
+
+            with self.assertRaises(PipelineValidationError) as context:
+                validate_pipeline_semantics(pipeline, registry)
+
+            self.assertTrue(any("must have an incoming edge" in error for error in context.exception.errors))
+
+    def test_run_pipeline_rejects_multiple_artifacts_for_single_pipeline_input(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            registry_path = root / "registry.json"
+            pipeline_path = root / "pipeline.json"
+            first_input = root / "input-1.canvas"
+            second_input = root / "input-2.canvas"
+            registry_path.write_text(json.dumps(_registry_payload()), encoding="utf-8")
+            pipeline_path.write_text(json.dumps(_pipeline_payload()), encoding="utf-8")
+            first_input.write_text("{}", encoding="utf-8")
+            second_input.write_text("{}", encoding="utf-8")
+
+            with self.assertRaisesRegex(ConfigurationError, "expects one source artifact"):
+                run_pipeline(
+                    PipelineRunRequest(
+                        pipeline_path=pipeline_path,
+                        registry_path=registry_path,
+                        pipeline_inputs={"canvas": (first_input, second_input)},
+                        run_root=root / "runs",
+                        service_runner=FakeServiceRunner(),
+                        validate_schema=False,
+                    )
+                )
+
+    def test_run_pipeline_rejects_directory_for_file_pipeline_input(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            registry_path = root / "registry.json"
+            pipeline_path = root / "pipeline.json"
+            input_dir = root / "canvas-dir"
+            registry_path.write_text(json.dumps(_registry_payload()), encoding="utf-8")
+            pipeline_path.write_text(json.dumps(_pipeline_payload()), encoding="utf-8")
+            input_dir.mkdir(parents=True, exist_ok=True)
+
+            with self.assertRaisesRegex(ConfigurationError, "expects file artifacts"):
+                run_pipeline(
+                    PipelineRunRequest(
+                        pipeline_path=pipeline_path,
+                        registry_path=registry_path,
+                        pipeline_inputs={"canvas": input_dir},
+                        run_root=root / "runs",
+                        service_runner=FakeServiceRunner(),
+                        validate_schema=False,
+                    )
+                )
 
     def test_run_pipeline_routes_many_file_artifacts_into_many_input(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -536,6 +662,22 @@ def _pipeline_payload() -> dict[str, object]:
                 "to": "pipeline:output.relationships",
             },
         ],
+    }
+
+
+def _missing_edge_pipeline_payload() -> dict[str, object]:
+    return {
+        "id": "canvas-missing-edges",
+        "inputs": [
+            {"name": "canvas", "type": "obsidian-canvas", "mode": "file", "cardinality": "one"}
+        ],
+        "outputs": [
+            {"name": "relationships", "type": "canvas-relationships", "mode": "file", "cardinality": "one"}
+        ],
+        "steps": [
+            {"id": "normalize", "invocations": [{"id": "canvas", "service": "obsidian-canvas-to-relationships"}]}
+        ],
+        "edges": [],
     }
 
 
