@@ -75,11 +75,11 @@ A good review should prioritize findings such as:
 
 If no findings are present, call that out explicitly and mention residual risk or missing coverage.
 
-## Branch Comparison Workflow
+## Ref Comparison Workflow
 
 Use the review helper script in `scripts/review-branch.ps1` to produce:
 
-- branch metadata
+- ref metadata
 - merge base
 - commit list
 - changed files
@@ -87,3 +87,23 @@ Use the review helper script in `scripts/review-branch.ps1` to produce:
 - patch output
 
 This should be the default input to a fresh review session.
+
+The script now supports any local Git refs that resolve to commits:
+
+- branch vs branch
+- tag vs branch
+- commit vs branch
+
+Examples:
+
+```powershell
+.\scripts\review-branch.ps1 -SourceRef main -TargetRef engine-mvp-1
+.\scripts\review-branch.ps1 -SourceRef main -TargetRef ec300ef
+.\scripts\review-branch.ps1 -SourceBranch main -TargetBranch main~3
+```
+
+Notes:
+
+- `SourceBranch` and `TargetBranch` still work as backward-compatible aliases.
+- The script resolves both refs to commits before producing the diff.
+- `-FetchFirst` is still optional and should only be used when the user explicitly wants remote updates fetched before review.
