@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from linksmith_core.errors import SchemaValidationError
+from linksmith_core.errors import ConfigurationError, SchemaValidationError
 from linksmith_engine.engine import PipelineRunRequest, run_pipeline
 from linksmith_engine.errors import PipelineValidationError
 from linksmith_engine.pipeline_loader import load_pipeline_definition
@@ -91,6 +91,16 @@ class FakeServiceRunner:
                 encoding="utf-8",
             )
             outputs = {"bundle": (output_file,)}
+        elif request.service_id == "emit-collision-a":
+            output_file = request.output_root / "documents" / "shared.md"
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            output_file.write_text("# Collision A\n", encoding="utf-8")
+            outputs = {"documents": (output_file,)}
+        elif request.service_id == "emit-collision-b":
+            output_file = request.output_root / "documents" / "shared.md"
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            output_file.write_text("# Collision B\n", encoding="utf-8")
+            outputs = {"documents": (output_file,)}
         else:
             raise AssertionError(f"Unexpected fake service id: {request.service_id}")
         request.log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -380,6 +390,29 @@ class EngineTests(unittest.TestCase):
             payload = json.loads(output_file.read_text(encoding="utf-8"))
             self.assertEqual(payload["count"], 2)
             self.assertEqual(payload["titles"], ["# Principle 1", "# Principle 2"])
+
+    def test_run_pipeline_rejects_many_file_name_collisions(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            registry_path = root / "registry.json"
+            pipeline_path = root / "pipeline.json"
+            trigger_file = root / "trigger.md"
+            registry_path.write_text(json.dumps(_collision_registry_payload()), encoding="utf-8")
+            pipeline_path.write_text(json.dumps(_collision_pipeline_payload()), encoding="utf-8")
+            trigger_file.write_text("# Trigger\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(ConfigurationError, "Filename collision"):
+                run_pipeline(
+                    PipelineRunRequest(
+                        pipeline_path=pipeline_path,
+                        registry_path=registry_path,
+                        pipeline_inputs={"trigger": trigger_file},
+                        run_root=root / "runs",
+                        service_runner=FakeServiceRunner(),
+                        run_id="run-collision-001",
+                        validate_schema=False,
+                    )
+                )
 
 
 def _registry_payload() -> dict[str, object]:
@@ -825,6 +858,84 @@ def _invalid_many_to_one_pipeline_payload() -> dict[str, object]:
             {"from": "pipeline:input.principles", "to": "split.principles.principles"},
             {"from": "split.principles.documents", "to": "bundle.single.document"},
             {"from": "bundle.single.bundle", "to": "pipeline:output.bundle"}
+        ],
+    }
+
+
+def _collision_registry_payload() -> dict[str, object]:
+    return {
+        "services": [
+            {
+                "id": "emit-collision-a",
+                "kind": "transform",
+                "deterministic": True,
+                "description": "Emit one markdown file named shared.md.",
+                "entrypoint": "docker://emit-collision-a",
+                "inputs": [
+                    {"name": "trigger", "type": "markdown-document", "mode": "file", "cardinality": "one"}
+                ],
+                "outputs": [
+                    {"name": "documents", "type": "markdown-document", "mode": "file", "cardinality": "many"}
+                ],
+            },
+            {
+                "id": "emit-collision-b",
+                "kind": "transform",
+                "deterministic": True,
+                "description": "Emit one markdown file named shared.md.",
+                "entrypoint": "docker://emit-collision-b",
+                "inputs": [
+                    {"name": "trigger", "type": "markdown-document", "mode": "file", "cardinality": "one"}
+                ],
+                "outputs": [
+                    {"name": "documents", "type": "markdown-document", "mode": "file", "cardinality": "many"}
+                ],
+            },
+            {
+                "id": "bundle-principles",
+                "kind": "transform",
+                "deterministic": True,
+                "description": "Bundle multiple markdown principle files.",
+                "entrypoint": "docker://bundle-principles",
+                "inputs": [
+                    {"name": "documents", "type": "markdown-document", "mode": "file", "cardinality": "many"}
+                ],
+                "outputs": [
+                    {"name": "bundle", "type": "summary-json", "mode": "file", "cardinality": "one"}
+                ],
+            },
+        ]
+    }
+
+
+def _collision_pipeline_payload() -> dict[str, object]:
+    return {
+        "id": "collision-pipeline",
+        "inputs": [
+            {"name": "trigger", "type": "markdown-document", "mode": "file", "cardinality": "one"}
+        ],
+        "outputs": [
+            {"name": "bundle", "type": "summary-json", "mode": "file", "cardinality": "one"}
+        ],
+        "steps": [
+            {
+                "id": "emit",
+                "invocations": [
+                    {"id": "a", "service": "emit-collision-a"},
+                    {"id": "b", "service": "emit-collision-b"}
+                ]
+            },
+            {
+                "id": "bundle",
+                "invocations": [{"id": "all", "service": "bundle-principles"}]
+            }
+        ],
+        "edges": [
+            {"from": "pipeline:input.trigger", "to": "emit.a.trigger"},
+            {"from": "pipeline:input.trigger", "to": "emit.b.trigger"},
+            {"from": "emit.a.documents", "to": "bundle.all.documents"},
+            {"from": "emit.b.documents", "to": "bundle.all.documents"},
+            {"from": "bundle.all.bundle", "to": "pipeline:output.bundle"}
         ],
     }
 

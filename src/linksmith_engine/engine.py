@@ -258,6 +258,8 @@ def _prepare_invocation_inputs(
         if contract.mode == "file":
             if contract.cardinality == "one" and len(sources) != 1:
                 raise ConfigurationError(f"Service input port '{port_name}' expects one source artifact.")
+            if contract.cardinality == "many":
+                _validate_unique_filenames(sources, port_name)
             copied = tuple(_copy_input_path(source, port_root) for source in sources)
         elif contract.mode == "directory":
             merged_root = port_root / "merged"
@@ -316,6 +318,17 @@ def _copy_output_path(source: Path, target_root: Path) -> Path:
         shutil.copytree(source, target_path)
         return target_path
     raise ConfigurationError(f"Output source path does not exist: {source}")
+
+
+def _validate_unique_filenames(sources: list[Path], port_name: str) -> None:
+    seen: dict[str, Path] = {}
+    for source in sources:
+        existing = seen.get(source.name)
+        if existing is not None:
+            raise ConfigurationError(
+                f"Filename collision for service input port '{port_name}': '{source.name}' from '{existing}' and '{source}'."
+            )
+        seen[source.name] = source
 
 
 def _validate_invocation_outputs(
