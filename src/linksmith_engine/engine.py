@@ -256,9 +256,9 @@ def _prepare_invocation_inputs(
         port_root = inputs_root / port_name
         port_root.mkdir(parents=True, exist_ok=True)
         if contract.mode == "file":
-            if len(sources) != 1:
+            if contract.cardinality == "one" and len(sources) != 1:
                 raise ConfigurationError(f"Service input port '{port_name}' expects one source artifact.")
-            copied = (_copy_input_path(sources[0], port_root),)
+            copied = tuple(_copy_input_path(source, port_root) for source in sources)
         elif contract.mode == "directory":
             merged_root = port_root / "merged"
             merged_root.mkdir(parents=True, exist_ok=True)

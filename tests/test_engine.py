@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from linksmith_core.errors import SchemaValidationError
 from linksmith_engine.engine import PipelineRunRequest, run_pipeline
+from linksmith_engine.errors import PipelineValidationError
 from linksmith_engine.pipeline_loader import load_pipeline_definition
 from linksmith_engine.registry_loader import load_registry_document
 from linksmith_engine.runtime_loader import load_runtime_config, load_service_runner
@@ -69,6 +70,27 @@ class FakeServiceRunner:
                 encoding="utf-8",
             )
             outputs = {"questions": (output_file,)}
+        elif request.service_id == "split-principles":
+            first_file = request.output_root / "documents" / "principle-1.md"
+            second_file = request.output_root / "documents" / "principle-2.md"
+            first_file.parent.mkdir(parents=True, exist_ok=True)
+            first_file.write_text("# Principle 1\nClarity\n", encoding="utf-8")
+            second_file.write_text("# Principle 2\nAlignment\n", encoding="utf-8")
+            outputs = {"documents": (first_file, second_file)}
+        elif request.service_id == "bundle-principles":
+            summaries = [path.read_text(encoding="utf-8") for path in request.inputs["documents"]]
+            output_file = request.output_root / "bundle" / "bundle.json"
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            output_file.write_text(
+                json.dumps(
+                    {
+                        "count": len(summaries),
+                        "titles": [text.splitlines()[0] for text in summaries],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            outputs = {"bundle": (output_file,)}
         else:
             raise AssertionError(f"Unexpected fake service id: {request.service_id}")
         request.log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -317,6 +339,47 @@ class EngineTests(unittest.TestCase):
             self.assertEqual(failed_manifest["status"], "failed")
             self.assertIn("simulated downstream failure", failed_manifest["error"])
             self.assertEqual(failed_manifest["outputs"], {})
+
+    def test_semantic_validation_rejects_many_to_one_file_flow(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            registry_path = root / "registry.json"
+            pipeline_path = root / "pipeline.json"
+            registry_path.write_text(json.dumps(_many_services_registry_payload()), encoding="utf-8")
+            pipeline_path.write_text(json.dumps(_invalid_many_to_one_pipeline_payload()), encoding="utf-8")
+
+            registry = load_registry_document(registry_path, validate_schema=False)
+            pipeline = load_pipeline_definition(pipeline_path, validate_schema=False)
+
+            with self.assertRaises(PipelineValidationError):
+                validate_pipeline_semantics(pipeline, registry)
+
+    def test_run_pipeline_routes_many_file_artifacts_into_many_input(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            registry_path = root / "registry.json"
+            pipeline_path = root / "pipeline.json"
+            principles_file = root / "principles.md"
+            registry_path.write_text(json.dumps(_many_services_registry_payload()), encoding="utf-8")
+            pipeline_path.write_text(json.dumps(_many_pipeline_payload()), encoding="utf-8")
+            principles_file.write_text("# Principles\n- Clarity matters\n", encoding="utf-8")
+
+            result = run_pipeline(
+                PipelineRunRequest(
+                    pipeline_path=pipeline_path,
+                    registry_path=registry_path,
+                    pipeline_inputs={"principles": principles_file},
+                    run_root=root / "runs",
+                    service_runner=FakeServiceRunner(),
+                    run_id="run-many-001",
+                    validate_schema=False,
+                )
+            )
+
+            output_file = result.outputs["bundle"][0]
+            payload = json.loads(output_file.read_text(encoding="utf-8"))
+            self.assertEqual(payload["count"], 2)
+            self.assertEqual(payload["titles"], ["# Principle 1", "# Principle 2"])
 
 
 def _registry_payload() -> dict[str, object]:
@@ -667,6 +730,102 @@ def _failing_pipeline_payload() -> dict[str, object]:
             {"from": "summaries.jobs.summary", "to": "questioning.combine.jobs_summary"},
             {"from": "questioning.combine.questions", "to": "pipeline:output.questions"}
         ]
+    }
+
+
+def _many_services_registry_payload() -> dict[str, object]:
+    return {
+        "services": [
+            {
+                "id": "split-principles",
+                "kind": "transform",
+                "deterministic": True,
+                "description": "Split a principles document into multiple markdown files.",
+                "entrypoint": "docker://split-principles",
+                "inputs": [
+                    {"name": "principles", "type": "markdown-document", "mode": "file", "cardinality": "one"}
+                ],
+                "outputs": [
+                    {"name": "documents", "type": "markdown-document", "mode": "file", "cardinality": "many"}
+                ],
+            },
+            {
+                "id": "bundle-principles",
+                "kind": "transform",
+                "deterministic": True,
+                "description": "Bundle multiple markdown principle files.",
+                "entrypoint": "docker://bundle-principles",
+                "inputs": [
+                    {"name": "documents", "type": "markdown-document", "mode": "file", "cardinality": "many"}
+                ],
+                "outputs": [
+                    {"name": "bundle", "type": "summary-json", "mode": "file", "cardinality": "one"}
+                ],
+            },
+            {
+                "id": "bundle-single-principle",
+                "kind": "transform",
+                "deterministic": True,
+                "description": "Bundle a single markdown principle file.",
+                "entrypoint": "docker://bundle-single-principle",
+                "inputs": [
+                    {"name": "document", "type": "markdown-document", "mode": "file", "cardinality": "one"}
+                ],
+                "outputs": [
+                    {"name": "bundle", "type": "summary-json", "mode": "file", "cardinality": "one"}
+                ],
+            },
+        ]
+    }
+
+
+def _many_pipeline_payload() -> dict[str, object]:
+    return {
+        "id": "many-principles-pipeline",
+        "inputs": [
+            {"name": "principles", "type": "markdown-document", "mode": "file", "cardinality": "one"}
+        ],
+        "outputs": [
+            {"name": "bundle", "type": "summary-json", "mode": "file", "cardinality": "one"}
+        ],
+        "steps": [
+            {"id": "split", "invocations": [{"id": "principles", "service": "split-principles"}]},
+            {"id": "bundle", "invocations": [{"id": "all", "service": "bundle-principles"}]}
+        ],
+        "edges": [
+            {"from": "pipeline:input.principles", "to": "split.principles.principles"},
+            {"from": "split.principles.documents", "to": "bundle.all.documents"},
+            {"from": "bundle.all.bundle", "to": "pipeline:output.bundle"}
+        ],
+    }
+
+
+def _invalid_many_to_one_pipeline_payload() -> dict[str, object]:
+    return {
+        "id": "invalid-many-one-pipeline",
+        "inputs": [
+            {"name": "principles", "type": "markdown-document", "mode": "file", "cardinality": "one"}
+        ],
+        "outputs": [
+            {"name": "bundle", "type": "summary-json", "mode": "file", "cardinality": "one"}
+        ],
+        "steps": [
+            {"id": "split", "invocations": [{"id": "principles", "service": "split-principles"}]},
+            {
+                "id": "bundle",
+                "invocations": [
+                    {
+                        "id": "single",
+                        "service": "bundle-single-principle"
+                    }
+                ]
+            }
+        ],
+        "edges": [
+            {"from": "pipeline:input.principles", "to": "split.principles.principles"},
+            {"from": "split.principles.documents", "to": "bundle.single.document"},
+            {"from": "bundle.single.bundle", "to": "pipeline:output.bundle"}
+        ],
     }
 
 
