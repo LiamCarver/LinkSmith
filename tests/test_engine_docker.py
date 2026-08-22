@@ -14,6 +14,61 @@ from linksmith_engine.service_runner import ServiceRunnerResult
 
 
 class EngineDockerTests(unittest.TestCase):
+    def test_run_pipeline_with_docker_markdown_renderer_service(self) -> None:
+        if shutil.which("docker") is None:
+            self.skipTest("Docker is not available in PATH.")
+
+        repo_root = Path(__file__).resolve().parents[1]
+        fixture_root = repo_root / "fixtures" / "services" / "json-to-markdown-renderer"
+        image_tag = "linksmith-json-to-markdown-renderer:engine-test"
+        subprocess.run(
+            [
+                "docker",
+                "build",
+                "-f",
+                str(repo_root / "services" / "json-to-markdown-renderer" / "Dockerfile"),
+                "-t",
+                image_tag,
+                str(repo_root),
+            ],
+            check=True,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            registry_path = root / "registry.json"
+            pipeline_path = root / "pipeline.json"
+            runtime_config_path = root / "runtime.json"
+            data_file = fixture_root / "input" / "basic-report.data.json"
+            template_file = fixture_root / "input" / "basic-report.template.mustache"
+            registry_path.write_text(json.dumps(_renderer_registry_payload()), encoding="utf-8")
+            pipeline_path.write_text(json.dumps(_renderer_pipeline_payload()), encoding="utf-8")
+            runtime_config_path.write_text(json.dumps(_renderer_runtime_payload(image_tag)), encoding="utf-8")
+
+            result = run_pipeline(
+                PipelineRunRequest(
+                    pipeline_path=pipeline_path,
+                    registry_path=registry_path,
+                    pipeline_inputs={
+                        "data": data_file,
+                        "template": template_file,
+                    },
+                    run_root=root / "runs",
+                    run_id="run-renderer-001",
+                    validate_schema=False,
+                    service_runner=load_service_runner(
+                        load_runtime_config(runtime_config_path, validate_schema=False)
+                    ),
+                )
+            )
+
+            actual_path = result.outputs["document"][0]
+            expected_path = fixture_root / "expected" / "basic-report.document.md"
+            actual = actual_path.read_text(encoding="utf-8")
+            expected = expected_path.read_text(encoding="utf-8")
+
+            self.assertEqual(actual, expected)
+
     def test_run_pipeline_with_docker_service_runner(self) -> None:
         if shutil.which("docker") is None:
             self.skipTest("Docker is not available in PATH.")
@@ -337,6 +392,70 @@ def _runtime_payload(image_tag: str) -> dict[str, object]:
                     "schemaBaseDirValue": "/app",
                     "inputMountRoot": "/data/inputs",
                     "outputMountRoot": "/data/output"
+                }
+            }
+        }
+    }
+
+
+def _renderer_registry_payload() -> dict[str, object]:
+    return {
+        "services": [
+            {
+                "id": "json-to-markdown-renderer",
+                "kind": "render",
+                "deterministic": True,
+                "description": "Render Markdown from JSON and a Mustache template.",
+                "entrypoint": "docker://json-to-markdown-renderer",
+                "inputs": [
+                    {"name": "data", "type": "json-document", "mode": "file", "cardinality": "one"},
+                    {"name": "template", "type": "mustache-template", "mode": "file", "cardinality": "one"},
+                ],
+                "outputs": [
+                    {"name": "document", "type": "markdown-document", "mode": "file", "cardinality": "one"}
+                ],
+            }
+        ]
+    }
+
+
+def _renderer_pipeline_payload() -> dict[str, object]:
+    return {
+        "id": "render-basic-report",
+        "inputs": [
+            {"name": "data", "type": "json-document", "mode": "file", "cardinality": "one"},
+            {"name": "template", "type": "mustache-template", "mode": "file", "cardinality": "one"},
+        ],
+        "outputs": [
+            {"name": "document", "type": "markdown-document", "mode": "file", "cardinality": "one"}
+        ],
+        "steps": [
+            {"id": "render", "invocations": [{"id": "report", "service": "json-to-markdown-renderer"}]}
+        ],
+        "edges": [
+            {"from": "pipeline:input.data", "to": "render.report.data"},
+            {"from": "pipeline:input.template", "to": "render.report.template"},
+            {"from": "render.report.document", "to": "pipeline:output.document"},
+        ],
+    }
+
+
+def _renderer_runtime_payload(image_tag: str) -> dict[str, object]:
+    return {
+        "runner": {
+            "kind": "docker",
+            "services": {
+                "json-to-markdown-renderer": {
+                    "image": image_tag,
+                    "inputArguments": {
+                        "data": "--data",
+                        "template": "--template",
+                    },
+                    "outputDirArgument": "--output-dir",
+                    "outputFileNameArguments": {"document": "--output-file-name"},
+                    "outputFileNames": {"document": "document.md"},
+                    "inputMountRoot": "/data/inputs",
+                    "outputMountRoot": "/data/output",
                 }
             }
         }

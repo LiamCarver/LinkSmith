@@ -211,6 +211,8 @@ def _infer_artifact_kind(
     normalized = artifact_type.strip().lower()
     if normalized in {"json", "application/json"} or normalized.endswith("+json"):
         return "json"
+    if normalized in {"mustache-template", "template/mustache"}:
+        return "markdown"
     if normalized in {"markdown", "md", "text/markdown"}:
         return "markdown"
     if "markdown" in normalized:
@@ -219,7 +221,7 @@ def _infer_artifact_kind(
         return "json"
     if path is not None and path.suffix.lower() in {".json", ".canvas"}:
         return "json"
-    if path is not None and path.suffix.lower() in {".md", ".markdown"}:
+    if path is not None and path.suffix.lower() in {".md", ".markdown", ".mustache"}:
         return "markdown"
     if isinstance(output, JsonOutput):
         return "json"
