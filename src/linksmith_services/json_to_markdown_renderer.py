@@ -12,6 +12,7 @@ from linksmith_core.models import JsonArtifact, MarkdownArtifact, MarkdownOutput
 from linksmith_core.runtime import run_service
 
 _TAG_PATTERN = re.compile(r"{{\s*([#/^!]?)\s*([^{}]+?)\s*}}")
+_MISSING = object()
 
 
 def render_markdown_document(payload: dict[str, Any], template: str) -> str:
@@ -110,10 +111,10 @@ def main() -> int:
 
 
 def _validate_template_context(template: str, payload: dict[str, Any]) -> None:
-    _validate_block(template, payload)
+    _validate_block(template, (payload,))
 
 
-def _validate_block(template: str, context: Any) -> None:
+def _validate_block(template: str, contexts: tuple[Any, ...]) -> None:
     position = 0
     while True:
         match = _TAG_PATTERN.search(template, position)
@@ -123,18 +124,28 @@ def _validate_block(template: str, context: Any) -> None:
         tag_name = match.group(2).strip()
         position = match.end()
 
-        if tag_type in {"", "^"}:
-            _resolve_context_value(tag_name, context)
+        if tag_type == "":
+            _resolve_context_value(tag_name, contexts)
             continue
         if tag_type == "!":
+            continue
+        if tag_type == "^":
+            section_start = match.end()
+            section_end, inner_template = _extract_section(template, section_start, tag_name)
+            section_value = _resolve_context_value(tag_name, contexts, allow_missing=True)
+            if _should_render_inverted_section(section_value):
+                _validate_block(inner_template, contexts)
+            position = section_end
             continue
         if tag_type == "#":
             section_start = match.end()
             section_end, inner_template = _extract_section(template, section_start, tag_name)
-            section_value = _resolve_context_value(tag_name, context)
-            for child_context in _iter_section_contexts(section_value):
-                _validate_block(inner_template, child_context)
+            section_value = _resolve_context_value(tag_name, contexts, allow_missing=True)
+            for child_contexts in _iter_section_contexts(section_value, contexts):
+                _validate_block(inner_template, child_contexts)
             position = section_end
+            continue
+        if tag_type == "/":
             continue
 
 
@@ -157,26 +168,52 @@ def _extract_section(template: str, start: int, tag_name: str) -> tuple[int, str
         position = match.end()
 
 
-def _iter_section_contexts(value: Any) -> tuple[Any, ...]:
+def _iter_section_contexts(value: Any, contexts: tuple[Any, ...]) -> tuple[tuple[Any, ...], ...]:
+    if value is _MISSING or value is False or value is None:
+        return tuple()
     if isinstance(value, list):
-        return tuple(value)
-    if isinstance(value, dict):
-        return (value,)
-    return (value,)
+        return tuple((item, *contexts) for item in value)
+    if value == "":
+        return tuple()
+    return ((value, *contexts),)
 
 
-def _resolve_context_value(path: str, context: Any) -> Any:
+def _resolve_context_value(path: str, contexts: tuple[Any, ...], *, allow_missing: bool = False) -> Any:
     if path == ".":
-        return context
+        return contexts[0]
+    for context in contexts:
+        resolved = _resolve_from_context(path, context, allow_missing=True)
+        if resolved is not _MISSING:
+            return resolved
+    if allow_missing:
+        return _MISSING
+    raise ConfigurationError(f"Template references missing key '{path}'.")
+
+
+def _resolve_from_context(path: str, context: Any, *, allow_missing: bool) -> Any:
     current = context
     for segment in path.split("."):
         if isinstance(current, dict):
             if segment not in current:
-                raise ConfigurationError(f"Template references missing key '{path}'.")
+                return _MISSING if allow_missing else _raise_missing_key(path)
             current = current[segment]
             continue
-        raise ConfigurationError(f"Template references missing key '{path}'.")
+        return _MISSING if allow_missing else _raise_missing_key(path)
     return current
+
+
+def _should_render_inverted_section(value: Any) -> bool:
+    if value is _MISSING or value is False or value is None:
+        return True
+    if isinstance(value, list):
+        return len(value) == 0
+    if value == "":
+        return True
+    return False
+
+
+def _raise_missing_key(path: str) -> Any:
+    raise ConfigurationError(f"Template references missing key '{path}'.")
 
 
 if __name__ == "__main__":

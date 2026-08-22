@@ -30,6 +30,30 @@ class JsonToMarkdownRendererLogicTests(unittest.TestCase):
         with self.assertRaisesRegex(ConfigurationError, "missing key 'summary'"):
             render_markdown_document(payload, template)
 
+    def test_render_allows_inverted_section_for_absent_key(self) -> None:
+        payload = {"title": "Only Title"}
+        template = "# {{title}}\n\n{{^summary}}No summary{{/summary}}\n"
+
+        actual = render_markdown_document(payload, template)
+
+        self.assertEqual(actual, "# Only Title\n\nNo summary\n")
+
+    def test_render_allows_falsey_section_value_without_descending(self) -> None:
+        payload = {"title": "Only Title", "owner": None}
+        template = "# {{title}}\n{{#owner}}{{name}}{{/owner}}"
+
+        actual = render_markdown_document(payload, template)
+
+        self.assertEqual(actual, "# Only Title\n")
+
+    def test_render_allows_truthy_scalar_section_value(self) -> None:
+        payload = {"title": "Only Title", "show_title": True}
+        template = "{{#show_title}}{{title}}{{/show_title}}"
+
+        actual = render_markdown_document(payload, template)
+
+        self.assertEqual(actual, "Only Title")
+
 
 if __name__ == "__main__":
     unittest.main()
