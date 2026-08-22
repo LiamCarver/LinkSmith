@@ -1,0 +1,14 @@
+{
+  "title": "Team Analysis",
+  "summary": "The client team is strong on delivery but needs clearer role boundaries.",
+  "risks": [
+    {
+      "name": "Role ambiguity",
+      "impact": "Decision ownership is unclear across delivery and analysis."
+    },
+    {
+      "name": "Knowledge silos",
+      "impact": "Critical client context is concentrated in two people."
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "artifactType": "json-document",
+  "valid": [
+    "valid/basic-report.data.valid.json"
+  ]
+}
