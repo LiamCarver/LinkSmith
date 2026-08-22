@@ -70,6 +70,12 @@ class FakeServiceRunner:
                 encoding="utf-8",
             )
             outputs = {"questions": (output_file,)}
+        elif request.service_id == "build-missing-output-port":
+            outputs = {}
+        elif request.service_id == "build-missing-output-file":
+            output_file = request.output_root / "questions" / "questions.json"
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            outputs = {"questions": (output_file,)}
         elif request.service_id == "split-principles":
             first_file = request.output_root / "documents" / "principle-1.md"
             second_file = request.output_root / "documents" / "principle-2.md"
@@ -264,6 +270,68 @@ class EngineTests(unittest.TestCase):
                         run_id="run-invalid-001",
                         validate_schema=False,
                         validate_outputs=True,
+                    )
+                )
+
+    def test_run_pipeline_rejects_missing_declared_output_port(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            registry_path = root / "registry.json"
+            pipeline_path = root / "pipeline.json"
+            principles_file = root / "principles.md"
+            jobs_file = root / "jobs.md"
+            registry_path.write_text(
+                json.dumps(_missing_output_port_registry_payload()),
+                encoding="utf-8",
+            )
+            pipeline_path.write_text(json.dumps(_missing_output_port_pipeline_payload()), encoding="utf-8")
+            principles_file.write_text("# Principles\n- Clarity matters\n", encoding="utf-8")
+            jobs_file.write_text("# Roles\n- Delivery lead\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(ConfigurationError, "did not produce declared output port 'questions'"):
+                run_pipeline(
+                    PipelineRunRequest(
+                        pipeline_path=pipeline_path,
+                        registry_path=registry_path,
+                        pipeline_inputs={
+                            "principles": principles_file,
+                            "jobs": jobs_file,
+                        },
+                        run_root=root / "runs",
+                        service_runner=FakeServiceRunner(),
+                        run_id="run-missing-port-001",
+                        validate_schema=False,
+                    )
+                )
+
+    def test_run_pipeline_rejects_missing_declared_output_artifact_path(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            registry_path = root / "registry.json"
+            pipeline_path = root / "pipeline.json"
+            principles_file = root / "principles.md"
+            jobs_file = root / "jobs.md"
+            registry_path.write_text(
+                json.dumps(_missing_output_file_registry_payload()),
+                encoding="utf-8",
+            )
+            pipeline_path.write_text(json.dumps(_missing_output_file_pipeline_payload()), encoding="utf-8")
+            principles_file.write_text("# Principles\n- Clarity matters\n", encoding="utf-8")
+            jobs_file.write_text("# Roles\n- Delivery lead\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(ConfigurationError, "does not exist"):
+                run_pipeline(
+                    PipelineRunRequest(
+                        pipeline_path=pipeline_path,
+                        registry_path=registry_path,
+                        pipeline_inputs={
+                            "principles": principles_file,
+                            "jobs": jobs_file,
+                        },
+                        run_root=root / "runs",
+                        service_runner=FakeServiceRunner(),
+                        run_id="run-missing-file-001",
+                        validate_schema=False,
                     )
                 )
 
@@ -870,6 +938,92 @@ def _invalid_output_pipeline_payload() -> dict[str, object]:
             {"from": "questioning.combine.questions", "to": "pipeline:output.questions"}
         ]
     }
+
+
+def _missing_output_port_registry_payload() -> dict[str, object]:
+    return {
+        "services": [
+            {
+                "id": "summarize-principles",
+                "kind": "transform",
+                "deterministic": True,
+                "description": "Summarize principle markdown into JSON.",
+                "entrypoint": "python://summarize-principles",
+                "inputs": [
+                    {"name": "principles", "type": "markdown-document", "mode": "file", "cardinality": "one"}
+                ],
+                "outputs": [
+                    {"name": "summary", "type": "principles-summary", "mode": "file", "cardinality": "one"}
+                ],
+            },
+            {
+                "id": "summarize-jobs",
+                "kind": "transform",
+                "deterministic": True,
+                "description": "Summarize job markdown into JSON.",
+                "entrypoint": "python://summarize-jobs",
+                "inputs": [
+                    {"name": "jobs", "type": "markdown-document", "mode": "file", "cardinality": "one"}
+                ],
+                "outputs": [
+                    {"name": "summary", "type": "jobs-summary", "mode": "file", "cardinality": "one"}
+                ],
+            },
+            {
+                "id": "build-missing-output-port",
+                "kind": "transform",
+                "deterministic": True,
+                "description": "Return no outputs despite declaring questions.",
+                "entrypoint": "python://build-missing-output-port",
+                "inputs": [
+                    {"name": "principles_summary", "type": "principles-summary", "mode": "file", "cardinality": "one"},
+                    {"name": "jobs_summary", "type": "jobs-summary", "mode": "file", "cardinality": "one"}
+                ],
+                "outputs": [
+                    {"name": "questions", "type": "questions-json", "mode": "file", "cardinality": "one"}
+                ],
+            },
+        ]
+    }
+
+
+def _missing_output_port_pipeline_payload() -> dict[str, object]:
+    return {
+        "id": "missing-output-port-pipeline",
+        "inputs": [
+            {"name": "principles", "type": "markdown-document", "mode": "file", "cardinality": "one"},
+            {"name": "jobs", "type": "markdown-document", "mode": "file", "cardinality": "one"}
+        ],
+        "outputs": [
+            {"name": "questions", "type": "questions-json", "mode": "file", "cardinality": "one"}
+        ],
+        "steps": [
+            {"id": "summaries", "invocations": [{"id": "principles", "service": "summarize-principles"}, {"id": "jobs", "service": "summarize-jobs"}]},
+            {"id": "questioning", "invocations": [{"id": "combine", "service": "build-missing-output-port"}]}
+        ],
+        "edges": [
+            {"from": "pipeline:input.principles", "to": "summaries.principles.principles"},
+            {"from": "pipeline:input.jobs", "to": "summaries.jobs.jobs"},
+            {"from": "summaries.principles.summary", "to": "questioning.combine.principles_summary"},
+            {"from": "summaries.jobs.summary", "to": "questioning.combine.jobs_summary"},
+            {"from": "questioning.combine.questions", "to": "pipeline:output.questions"}
+        ],
+    }
+
+
+def _missing_output_file_registry_payload() -> dict[str, object]:
+    payload = _missing_output_port_registry_payload()
+    payload["services"][-1]["id"] = "build-missing-output-file"
+    payload["services"][-1]["description"] = "Return a missing output file path."
+    payload["services"][-1]["entrypoint"] = "python://build-missing-output-file"
+    return payload
+
+
+def _missing_output_file_pipeline_payload() -> dict[str, object]:
+    payload = _missing_output_port_pipeline_payload()
+    payload["id"] = "missing-output-file-pipeline"
+    payload["steps"][-1]["invocations"][0]["service"] = "build-missing-output-file"
+    return payload
 
 
 def _questions_schema_path() -> str:

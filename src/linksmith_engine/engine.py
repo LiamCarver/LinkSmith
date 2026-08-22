@@ -118,6 +118,11 @@ def run_pipeline(request: PipelineRunRequest) -> PipelineRunResult:
                             log_path=run_paths.invocation_log_file(step.step_id, invocation.invocation_id),
                         )
                         runner_result = request.service_runner.run(runner_request)
+                        _validate_declared_invocation_outputs(
+                            outputs=runner_result.outputs,
+                            output_contracts={port.name: port for port in service.contract.outputs},
+                            service_id=invocation.service_id,
+                        )
                         if request.validate_outputs:
                             _validate_invocation_outputs(
                                 outputs=runner_result.outputs,
@@ -427,6 +432,33 @@ def _resolve_schema_path(schema_ref: str, registry_path: Path) -> Path:
         if resolved.exists():
             return resolved
     raise ConfigurationError(f"Could not resolve schemaRef '{schema_ref}' for invocation output validation.")
+
+
+def _validate_declared_invocation_outputs(
+    *,
+    outputs: Mapping[str, tuple[Path, ...]],
+    output_contracts: Mapping[str, PortContract],
+    service_id: str,
+) -> None:
+    for port_name, contract in output_contracts.items():
+        artifact_paths = outputs.get(port_name)
+        if artifact_paths is None:
+            raise ConfigurationError(
+                f"Service '{service_id}' did not produce declared output port '{port_name}'."
+            )
+        if contract.cardinality == "one" and len(artifact_paths) != 1:
+            raise ConfigurationError(
+                f"Service '{service_id}' output port '{port_name}' expects one artifact."
+            )
+        if len(artifact_paths) == 0:
+            raise ConfigurationError(
+                f"Service '{service_id}' output port '{port_name}' produced no artifacts."
+            )
+        for artifact_path in artifact_paths:
+            if not artifact_path.exists():
+                raise ConfigurationError(
+                    f"Declared output artifact for service '{service_id}' port '{port_name}' does not exist: {artifact_path}"
+                )
 
 
 def _write_failed_invocation_manifest(
