@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from linksmith_core.errors import SchemaValidationError
 from linksmith_engine.engine import PipelineRunRequest, run_pipeline
 from linksmith_engine.pipeline_loader import load_pipeline_definition
 from linksmith_engine.registry_loader import load_registry_document
@@ -57,6 +58,14 @@ class FakeServiceRunner:
                         ],
                     }
                 ),
+                encoding="utf-8",
+            )
+            outputs = {"questions": (output_file,)}
+        elif request.service_id == "build-invalid-question-set":
+            output_file = request.output_root / "questions" / "questions.json"
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            output_file.write_text(
+                json.dumps({"questions": ["not-an-object"]}),
                 encoding="utf-8",
             )
             outputs = {"questions": (output_file,)}
@@ -157,6 +166,38 @@ class EngineTests(unittest.TestCase):
             self.assertEqual(payload["sources"], ["principles", "jobs"])
             self.assertEqual(len(payload["questions"]), 2)
             self.assertEqual(len(result.invocation_manifests), 3)
+
+    def test_run_pipeline_rejects_invalid_json_output_against_declared_schema(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            registry_path = root / "registry.json"
+            pipeline_path = root / "pipeline.json"
+            principles_file = root / "principles.md"
+            jobs_file = root / "jobs.md"
+            registry_path.write_text(
+                json.dumps(_invalid_output_registry_payload(_questions_schema_path())),
+                encoding="utf-8",
+            )
+            pipeline_path.write_text(json.dumps(_invalid_output_pipeline_payload()), encoding="utf-8")
+            principles_file.write_text("# Principles\n- Clarity matters\n", encoding="utf-8")
+            jobs_file.write_text("# Roles\n- Delivery lead\n", encoding="utf-8")
+
+            with self.assertRaises(SchemaValidationError):
+                run_pipeline(
+                    PipelineRunRequest(
+                        pipeline_path=pipeline_path,
+                        registry_path=registry_path,
+                        pipeline_inputs={
+                            "principles": principles_file,
+                            "jobs": jobs_file,
+                        },
+                        run_root=root / "runs",
+                        service_runner=FakeServiceRunner(),
+                        run_id="run-invalid-001",
+                        validate_schema=False,
+                        validate_outputs=True,
+                    )
+                )
 
     def test_docker_service_runner_places_service_arguments_after_image(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -394,6 +435,98 @@ def _multi_service_pipeline_payload() -> dict[str, object]:
             {"from": "questioning.combine.questions", "to": "pipeline:output.questions"}
         ]
     }
+
+
+def _invalid_output_registry_payload(questions_schema_path: str) -> dict[str, object]:
+    return {
+        "services": [
+            {
+                "id": "summarize-principles",
+                "kind": "transform",
+                "deterministic": True,
+                "description": "Summarize company principles into JSON.",
+                "entrypoint": "docker://summarize-principles",
+                "inputs": [
+                    {"name": "principles", "type": "markdown-document", "mode": "file", "cardinality": "one"}
+                ],
+                "outputs": [
+                    {"name": "summary", "type": "summary-json", "mode": "file", "cardinality": "one"}
+                ],
+            },
+            {
+                "id": "summarize-jobs",
+                "kind": "transform",
+                "deterministic": True,
+                "description": "Summarize job descriptions into JSON.",
+                "entrypoint": "docker://summarize-jobs",
+                "inputs": [
+                    {"name": "jobs", "type": "markdown-document", "mode": "file", "cardinality": "one"}
+                ],
+                "outputs": [
+                    {"name": "summary", "type": "summary-json", "mode": "file", "cardinality": "one"}
+                ],
+            },
+            {
+                "id": "build-invalid-question-set",
+                "kind": "transform",
+                "deterministic": True,
+                "description": "Emit invalid questions payload for validation testing.",
+                "entrypoint": "docker://build-invalid-question-set",
+                "inputs": [
+                    {"name": "principles_summary", "type": "summary-json", "mode": "file", "cardinality": "one"},
+                    {"name": "jobs_summary", "type": "summary-json", "mode": "file", "cardinality": "one"}
+                ],
+                "outputs": [
+                    {
+                        "name": "questions",
+                        "type": "questions-json",
+                        "mode": "file",
+                        "cardinality": "one",
+                        "schemaRef": questions_schema_path
+                    }
+                ],
+            },
+        ]
+    }
+
+
+def _invalid_output_pipeline_payload() -> dict[str, object]:
+    return {
+        "id": "invalid-question-pipeline",
+        "inputs": [
+            {"name": "principles", "type": "markdown-document", "mode": "file", "cardinality": "one"},
+            {"name": "jobs", "type": "markdown-document", "mode": "file", "cardinality": "one"}
+        ],
+        "outputs": [
+            {"name": "questions", "type": "questions-json", "mode": "file", "cardinality": "one"}
+        ],
+        "steps": [
+            {
+                "id": "summaries",
+                "invocations": [
+                    {"id": "principles", "service": "summarize-principles"},
+                    {"id": "jobs", "service": "summarize-jobs"}
+                ]
+            },
+            {
+                "id": "questioning",
+                "invocations": [
+                    {"id": "combine", "service": "build-invalid-question-set"}
+                ]
+            }
+        ],
+        "edges": [
+            {"from": "pipeline:input.principles", "to": "summaries.principles.principles"},
+            {"from": "pipeline:input.jobs", "to": "summaries.jobs.jobs"},
+            {"from": "summaries.principles.summary", "to": "questioning.combine.principles_summary"},
+            {"from": "summaries.jobs.summary", "to": "questioning.combine.jobs_summary"},
+            {"from": "questioning.combine.questions", "to": "pipeline:output.questions"}
+        ]
+    }
+
+
+def _questions_schema_path() -> str:
+    return str((Path(__file__).resolve().parents[1] / "schemas" / "questions.schema.json").resolve())
 
 
 if __name__ == "__main__":

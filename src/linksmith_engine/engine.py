@@ -6,8 +6,9 @@ import uuid
 from pathlib import Path
 from typing import Mapping
 
-from linksmith_core.errors import ConfigurationError
+from linksmith_core.errors import ConfigurationError, MalformedJsonError
 from linksmith_core.models import PortContract
+from linksmith_core.schemas import SchemaValidator
 
 from .manifest import write_invocation_manifest, write_run_manifest
 from .models import (
@@ -36,6 +37,7 @@ class PipelineRunRequest:
         service_runner: ServiceRunner,
         run_id: str | None = None,
         validate_schema: bool = False,
+        validate_outputs: bool = False,
     ) -> None:
         self.pipeline_path = pipeline_path
         self.registry_path = registry_path
@@ -44,6 +46,7 @@ class PipelineRunRequest:
         self.service_runner = service_runner
         self.run_id = run_id or f"run-{uuid.uuid4().hex[:8]}"
         self.validate_schema = validate_schema
+        self.validate_outputs = validate_outputs
 
 
 class PipelineRunResult:
@@ -113,6 +116,12 @@ def run_pipeline(request: PipelineRunRequest) -> PipelineRunResult:
                     log_path=run_paths.invocation_log_file(step.step_id, invocation.invocation_id),
                 )
                 runner_result = request.service_runner.run(runner_request)
+                if request.validate_outputs:
+                    _validate_invocation_outputs(
+                        outputs=runner_result.outputs,
+                        output_contracts={port.name: port for port in service.contract.outputs},
+                        registry_path=request.registry_path,
+                    )
                 manifest = InvocationManifest(
                     step_id=step.step_id,
                     invocation_id=invocation.invocation_id,
@@ -283,3 +292,50 @@ def _copy_output_path(source: Path, target_root: Path) -> Path:
         shutil.copytree(source, target_path)
         return target_path
     raise ConfigurationError(f"Output source path does not exist: {source}")
+
+
+def _validate_invocation_outputs(
+    *,
+    outputs: Mapping[str, tuple[Path, ...]],
+    output_contracts: Mapping[str, PortContract],
+    registry_path: Path,
+) -> None:
+    validator = SchemaValidator()
+    for port_name, contract in output_contracts.items():
+        if contract.schema_ref is None:
+            continue
+        if contract.mode != "file":
+            raise ConfigurationError(
+                f"Schema validation is only supported for file outputs. Port '{port_name}' uses mode '{contract.mode}'."
+            )
+        resolved_schema_ref = str(_resolve_schema_path(contract.schema_ref, registry_path))
+        artifact_paths = outputs.get(port_name, tuple())
+        for artifact_path in artifact_paths:
+            payload = _load_json_payload(artifact_path)
+            validator.validate(payload, resolved_schema_ref)
+
+
+def _load_json_payload(path: Path) -> object:
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except json.JSONDecodeError as error:
+        raise MalformedJsonError(path, str(error)) from error
+
+
+def _resolve_schema_path(schema_ref: str, registry_path: Path) -> Path:
+    candidate = Path(schema_ref)
+    if candidate.is_absolute():
+        return candidate.resolve()
+
+    repo_root = Path(__file__).resolve().parents[2]
+    candidate_roots = (
+        registry_path.parent,
+        registry_path.parent.parent,
+        repo_root,
+    )
+    for root in candidate_roots:
+        resolved = (root / schema_ref).resolve()
+        if resolved.exists():
+            return resolved
+    raise ConfigurationError(f"Could not resolve schemaRef '{schema_ref}' for invocation output validation.")
