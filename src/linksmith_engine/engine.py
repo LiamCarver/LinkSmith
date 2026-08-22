@@ -264,17 +264,7 @@ def _prepare_invocation_inputs(
         elif contract.mode == "directory":
             merged_root = port_root / "merged"
             merged_root.mkdir(parents=True, exist_ok=True)
-            for source in sources:
-                if source.is_dir():
-                    for child in source.rglob("*"):
-                        if child.is_dir():
-                            continue
-                        relative = child.relative_to(source)
-                        target = merged_root / relative
-                        target.parent.mkdir(parents=True, exist_ok=True)
-                        shutil.copy2(child, target)
-                else:
-                    shutil.copy2(source, merged_root / source.name)
+            _copy_directory_sources_with_collision_detection(sources, merged_root, port_name)
             copied = (merged_root,)
         else:
             raise ConfigurationError(f"Engine does not yet support input mode '{contract.mode}' for invocation prep.")
@@ -329,6 +319,50 @@ def _validate_unique_filenames(sources: list[Path], port_name: str) -> None:
                 f"Filename collision for service input port '{port_name}': '{source.name}' from '{existing}' and '{source}'."
             )
         seen[source.name] = source
+
+
+def _copy_directory_sources_with_collision_detection(sources: list[Path], merged_root: Path, port_name: str) -> None:
+    seen: dict[Path, Path] = {}
+    for source in sources:
+        if source.is_dir():
+            for child in source.rglob("*"):
+                if child.is_dir():
+                    continue
+                relative = child.relative_to(source)
+                _copy_directory_child_with_collision_detection(
+                    child=child,
+                    relative=relative,
+                    merged_root=merged_root,
+                    port_name=port_name,
+                    seen=seen,
+                )
+        else:
+            _copy_directory_child_with_collision_detection(
+                child=source,
+                relative=Path(source.name),
+                merged_root=merged_root,
+                port_name=port_name,
+                seen=seen,
+            )
+
+
+def _copy_directory_child_with_collision_detection(
+    *,
+    child: Path,
+    relative: Path,
+    merged_root: Path,
+    port_name: str,
+    seen: dict[Path, Path],
+) -> None:
+    existing = seen.get(relative)
+    if existing is not None:
+        raise ConfigurationError(
+            f"Relative path collision for service input port '{port_name}': '{relative.as_posix()}' from '{existing}' and '{child}'."
+        )
+    target = merged_root / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(child, target)
+    seen[relative] = child
 
 
 def _validate_invocation_outputs(

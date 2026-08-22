@@ -91,6 +91,21 @@ class FakeServiceRunner:
                 encoding="utf-8",
             )
             outputs = {"bundle": (output_file,)}
+        elif request.service_id == "bundle-directory-principles":
+            merged_root = request.inputs["documents"][0]
+            summaries = [path.read_text(encoding="utf-8") for path in sorted(merged_root.rglob("*.md"))]
+            output_file = request.output_root / "bundle" / "bundle.json"
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            output_file.write_text(
+                json.dumps(
+                    {
+                        "count": len(summaries),
+                        "titles": [text.splitlines()[0] for text in summaries],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            outputs = {"bundle": (output_file,)}
         elif request.service_id == "emit-collision-a":
             output_file = request.output_root / "documents" / "shared.md"
             output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -101,6 +116,18 @@ class FakeServiceRunner:
             output_file.parent.mkdir(parents=True, exist_ok=True)
             output_file.write_text("# Collision B\n", encoding="utf-8")
             outputs = {"documents": (output_file,)}
+        elif request.service_id == "emit-directory-collision-a":
+            output_dir = request.output_root / "documents" / "set-a"
+            output_file = output_dir / "docs" / "shared.md"
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            output_file.write_text("# Directory Collision A\n", encoding="utf-8")
+            outputs = {"documents": (output_dir,)}
+        elif request.service_id == "emit-directory-collision-b":
+            output_dir = request.output_root / "documents" / "set-b"
+            output_file = output_dir / "docs" / "shared.md"
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            output_file.write_text("# Directory Collision B\n", encoding="utf-8")
+            outputs = {"documents": (output_dir,)}
         else:
             raise AssertionError(f"Unexpected fake service id: {request.service_id}")
         request.log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -410,6 +437,29 @@ class EngineTests(unittest.TestCase):
                         run_root=root / "runs",
                         service_runner=FakeServiceRunner(),
                         run_id="run-collision-001",
+                        validate_schema=False,
+                    )
+                )
+
+    def test_run_pipeline_rejects_directory_merge_relative_path_collisions(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            registry_path = root / "registry.json"
+            pipeline_path = root / "pipeline.json"
+            trigger_file = root / "trigger.md"
+            registry_path.write_text(json.dumps(_directory_collision_registry_payload()), encoding="utf-8")
+            pipeline_path.write_text(json.dumps(_directory_collision_pipeline_payload()), encoding="utf-8")
+            trigger_file.write_text("# Trigger\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(ConfigurationError, "Relative path collision"):
+                run_pipeline(
+                    PipelineRunRequest(
+                        pipeline_path=pipeline_path,
+                        registry_path=registry_path,
+                        pipeline_inputs={"trigger": trigger_file},
+                        run_root=root / "runs",
+                        service_runner=FakeServiceRunner(),
+                        run_id="run-directory-collision-001",
                         validate_schema=False,
                     )
                 )
@@ -928,6 +978,84 @@ def _collision_pipeline_payload() -> dict[str, object]:
             {
                 "id": "bundle",
                 "invocations": [{"id": "all", "service": "bundle-principles"}]
+            }
+        ],
+        "edges": [
+            {"from": "pipeline:input.trigger", "to": "emit.a.trigger"},
+            {"from": "pipeline:input.trigger", "to": "emit.b.trigger"},
+            {"from": "emit.a.documents", "to": "bundle.all.documents"},
+            {"from": "emit.b.documents", "to": "bundle.all.documents"},
+            {"from": "bundle.all.bundle", "to": "pipeline:output.bundle"}
+        ],
+    }
+
+
+def _directory_collision_registry_payload() -> dict[str, object]:
+    return {
+        "services": [
+            {
+                "id": "emit-directory-collision-a",
+                "kind": "transform",
+                "deterministic": True,
+                "description": "Emit one directory containing docs/shared.md.",
+                "entrypoint": "docker://emit-directory-collision-a",
+                "inputs": [
+                    {"name": "trigger", "type": "markdown-document", "mode": "file", "cardinality": "one"}
+                ],
+                "outputs": [
+                    {"name": "documents", "type": "markdown-document-set", "mode": "directory", "cardinality": "one"}
+                ],
+            },
+            {
+                "id": "emit-directory-collision-b",
+                "kind": "transform",
+                "deterministic": True,
+                "description": "Emit one directory containing docs/shared.md.",
+                "entrypoint": "docker://emit-directory-collision-b",
+                "inputs": [
+                    {"name": "trigger", "type": "markdown-document", "mode": "file", "cardinality": "one"}
+                ],
+                "outputs": [
+                    {"name": "documents", "type": "markdown-document-set", "mode": "directory", "cardinality": "one"}
+                ],
+            },
+            {
+                "id": "bundle-directory-principles",
+                "kind": "transform",
+                "deterministic": True,
+                "description": "Bundle markdown files from one merged directory.",
+                "entrypoint": "docker://bundle-directory-principles",
+                "inputs": [
+                    {"name": "documents", "type": "markdown-document-set", "mode": "directory", "cardinality": "many"}
+                ],
+                "outputs": [
+                    {"name": "bundle", "type": "summary-json", "mode": "file", "cardinality": "one"}
+                ],
+            },
+        ]
+    }
+
+
+def _directory_collision_pipeline_payload() -> dict[str, object]:
+    return {
+        "id": "directory-collision-pipeline",
+        "inputs": [
+            {"name": "trigger", "type": "markdown-document", "mode": "file", "cardinality": "one"}
+        ],
+        "outputs": [
+            {"name": "bundle", "type": "summary-json", "mode": "file", "cardinality": "one"}
+        ],
+        "steps": [
+            {
+                "id": "emit",
+                "invocations": [
+                    {"id": "a", "service": "emit-directory-collision-a"},
+                    {"id": "b", "service": "emit-directory-collision-b"}
+                ]
+            },
+            {
+                "id": "bundle",
+                "invocations": [{"id": "all", "service": "bundle-directory-principles"}]
             }
         ],
         "edges": [
