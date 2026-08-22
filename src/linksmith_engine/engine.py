@@ -84,80 +84,104 @@ def run_pipeline(request: PipelineRunRequest) -> PipelineRunResult:
     invocation_manifest_paths: list[Path] = []
     remaining = {(step.step_id, invocation.invocation_id): invocation for step in pipeline.steps for invocation in step.invocations}
 
-    while remaining:
-        progressed = False
-        for step in pipeline.steps:
-            for invocation in step.invocations:
-                key = (step.step_id, invocation.invocation_id)
-                if key not in remaining:
-                    continue
-                incoming_edges = [edge for edge in pipeline.edges if edge.to_endpoint.startswith(f"{step.step_id}.{invocation.invocation_id}.")]
-                if not _all_sources_ready(incoming_edges, pipeline_input_artifacts, produced_artifacts):
-                    continue
-                service = service_index[invocation.service_id]
-                prepared_inputs = _prepare_invocation_inputs(
-                    run_paths=run_paths,
-                    step_id=step.step_id,
-                    invocation=invocation,
-                    service_inputs={port.name: port for port in service.contract.inputs},
-                    incoming_edges=incoming_edges,
-                    pipeline_input_artifacts=pipeline_input_artifacts,
-                    produced_artifacts=produced_artifacts,
-                )
-                runner_request = ServiceRunnerRequest(
-                    step_id=step.step_id,
-                    invocation_id=invocation.invocation_id,
-                    service_id=invocation.service_id,
-                    inputs=prepared_inputs,
-                    input_contracts={port.name: port for port in service.contract.inputs},
-                    output_contracts={port.name: port for port in service.contract.outputs},
-                    output_root=run_paths.invocation_outputs_dir(step.step_id, invocation.invocation_id),
-                    config=invocation.config,
-                    log_path=run_paths.invocation_log_file(step.step_id, invocation.invocation_id),
-                )
-                runner_result = request.service_runner.run(runner_request)
-                if request.validate_outputs:
-                    _validate_invocation_outputs(
-                        outputs=runner_result.outputs,
-                        output_contracts={port.name: port for port in service.contract.outputs},
-                        registry_path=request.registry_path,
+    try:
+        while remaining:
+            progressed = False
+            for step in pipeline.steps:
+                for invocation in step.invocations:
+                    key = (step.step_id, invocation.invocation_id)
+                    if key not in remaining:
+                        continue
+                    incoming_edges = [edge for edge in pipeline.edges if edge.to_endpoint.startswith(f"{step.step_id}.{invocation.invocation_id}.")]
+                    if not _all_sources_ready(incoming_edges, pipeline_input_artifacts, produced_artifacts):
+                        continue
+                    service = service_index[invocation.service_id]
+                    prepared_inputs = _prepare_invocation_inputs(
+                        run_paths=run_paths,
+                        step_id=step.step_id,
+                        invocation=invocation,
+                        service_inputs={port.name: port for port in service.contract.inputs},
+                        incoming_edges=incoming_edges,
+                        pipeline_input_artifacts=pipeline_input_artifacts,
+                        produced_artifacts=produced_artifacts,
                     )
-                manifest = InvocationManifest(
-                    step_id=step.step_id,
-                    invocation_id=invocation.invocation_id,
-                    service_id=invocation.service_id,
-                    status="succeeded",
-                    inputs={name: tuple(str(path) for path in paths) for name, paths in prepared_inputs.items()},
-                    outputs={name: tuple(str(path) for path in paths) for name, paths in runner_result.outputs.items()},
-                    exit_code=runner_result.exit_code,
-                    log_path=str(run_paths.invocation_log_file(step.step_id, invocation.invocation_id)),
-                )
-                manifest_path = run_paths.invocation_manifest_file(step.step_id, invocation.invocation_id)
-                write_invocation_manifest(manifest_path, manifest)
-                invocation_manifest_paths.append(manifest_path)
-                for port_name, paths in runner_result.outputs.items():
-                    produced_artifacts[f"{step.step_id}.{invocation.invocation_id}.{port_name}"] = paths
-                del remaining[key]
-                progressed = True
-        if not progressed:
-            unresolved = ", ".join(f"{step_id}.{invocation_id}" for step_id, invocation_id in remaining)
-            raise ConfigurationError(f"Pipeline execution could not progress. Remaining invocations: {unresolved}")
+                    try:
+                        runner_request = ServiceRunnerRequest(
+                            step_id=step.step_id,
+                            invocation_id=invocation.invocation_id,
+                            service_id=invocation.service_id,
+                            inputs=prepared_inputs,
+                            input_contracts={port.name: port for port in service.contract.inputs},
+                            output_contracts={port.name: port for port in service.contract.outputs},
+                            output_root=run_paths.invocation_outputs_dir(step.step_id, invocation.invocation_id),
+                            config=invocation.config,
+                            log_path=run_paths.invocation_log_file(step.step_id, invocation.invocation_id),
+                        )
+                        runner_result = request.service_runner.run(runner_request)
+                        if request.validate_outputs:
+                            _validate_invocation_outputs(
+                                outputs=runner_result.outputs,
+                                output_contracts={port.name: port for port in service.contract.outputs},
+                                registry_path=request.registry_path,
+                            )
+                    except Exception as error:
+                        failed_manifest_path = _write_failed_invocation_manifest(
+                            run_paths=run_paths,
+                            step_id=step.step_id,
+                            invocation_id=invocation.invocation_id,
+                            service_id=invocation.service_id,
+                            inputs=prepared_inputs,
+                            error=error,
+                        )
+                        invocation_manifest_paths.append(failed_manifest_path)
+                        raise
+                    manifest = InvocationManifest(
+                        step_id=step.step_id,
+                        invocation_id=invocation.invocation_id,
+                        service_id=invocation.service_id,
+                        status="succeeded",
+                        inputs={name: tuple(str(path) for path in paths) for name, paths in prepared_inputs.items()},
+                        outputs={name: tuple(str(path) for path in paths) for name, paths in runner_result.outputs.items()},
+                        exit_code=runner_result.exit_code,
+                        log_path=str(run_paths.invocation_log_file(step.step_id, invocation.invocation_id)),
+                    )
+                    manifest_path = run_paths.invocation_manifest_file(step.step_id, invocation.invocation_id)
+                    write_invocation_manifest(manifest_path, manifest)
+                    invocation_manifest_paths.append(manifest_path)
+                    for port_name, paths in runner_result.outputs.items():
+                        produced_artifacts[f"{step.step_id}.{invocation.invocation_id}.{port_name}"] = paths
+                    del remaining[key]
+                    progressed = True
+            if not progressed:
+                unresolved = ", ".join(f"{step_id}.{invocation_id}" for step_id, invocation_id in remaining)
+                raise ConfigurationError(f"Pipeline execution could not progress. Remaining invocations: {unresolved}")
 
-    pipeline_outputs = _materialize_pipeline_outputs(run_paths, pipeline, pipeline_input_artifacts, produced_artifacts)
-    run_manifest = RunManifest(
-        pipeline_id=pipeline.pipeline_id,
-        run_id=run_paths.run_id,
-        status="succeeded",
-        invocation_manifests=tuple(str(path) for path in invocation_manifest_paths),
-        outputs={name: tuple(str(path) for path in paths) for name, paths in pipeline_outputs.items()},
-    )
-    write_run_manifest(run_paths.run_manifest_file, run_manifest)
-    return PipelineRunResult(
-        run_paths=run_paths,
-        pipeline=pipeline,
-        outputs=pipeline_outputs,
-        invocation_manifests=tuple(invocation_manifest_paths),
-    )
+        pipeline_outputs = _materialize_pipeline_outputs(run_paths, pipeline, pipeline_input_artifacts, produced_artifacts)
+        run_manifest = RunManifest(
+            pipeline_id=pipeline.pipeline_id,
+            run_id=run_paths.run_id,
+            status="succeeded",
+            invocation_manifests=tuple(str(path) for path in invocation_manifest_paths),
+            outputs={name: tuple(str(path) for path in paths) for name, paths in pipeline_outputs.items()},
+        )
+        write_run_manifest(run_paths.run_manifest_file, run_manifest)
+        return PipelineRunResult(
+            run_paths=run_paths,
+            pipeline=pipeline,
+            outputs=pipeline_outputs,
+            invocation_manifests=tuple(invocation_manifest_paths),
+        )
+    except Exception as error:
+        failed_run_manifest = RunManifest(
+            pipeline_id=pipeline.pipeline_id,
+            run_id=run_paths.run_id,
+            status="failed",
+            invocation_manifests=tuple(str(path) for path in invocation_manifest_paths),
+            outputs={},
+            error=str(error),
+        )
+        write_run_manifest(run_paths.run_manifest_file, failed_run_manifest)
+        raise
 
 
 def _materialize_pipeline_inputs(
@@ -339,3 +363,27 @@ def _resolve_schema_path(schema_ref: str, registry_path: Path) -> Path:
         if resolved.exists():
             return resolved
     raise ConfigurationError(f"Could not resolve schemaRef '{schema_ref}' for invocation output validation.")
+
+
+def _write_failed_invocation_manifest(
+    *,
+    run_paths: RunPaths,
+    step_id: str,
+    invocation_id: str,
+    service_id: str,
+    inputs: Mapping[str, tuple[Path, ...]],
+    error: Exception,
+) -> Path:
+    manifest = InvocationManifest(
+        step_id=step_id,
+        invocation_id=invocation_id,
+        service_id=service_id,
+        status="failed",
+        inputs={name: tuple(str(path) for path in paths) for name, paths in inputs.items()},
+        outputs={},
+        log_path=str(run_paths.invocation_log_file(step_id, invocation_id)),
+        error=str(error),
+    )
+    manifest_path = run_paths.invocation_manifest_file(step_id, invocation_id)
+    write_invocation_manifest(manifest_path, manifest)
+    return manifest_path

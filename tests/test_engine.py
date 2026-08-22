@@ -76,6 +76,15 @@ class FakeServiceRunner:
         return ServiceRunnerResult(outputs=outputs, exit_code=0)
 
 
+class FailingServiceRunner(FakeServiceRunner):
+    def run(self, request):
+        if request.service_id == "build-failing-question-set":
+            request.log_path.parent.mkdir(parents=True, exist_ok=True)
+            request.log_path.write_text("failing-runner boom", encoding="utf-8")
+            raise RuntimeError("simulated downstream failure")
+        return super().run(request)
+
+
 class EngineTests(unittest.TestCase):
     def test_semantic_validation_accepts_single_invocation_pipeline(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -258,6 +267,56 @@ class EngineTests(unittest.TestCase):
             image_index = command.index("example-image:latest")
             self.assertLess(image_index, command.index("--input"))
             self.assertEqual(command[0:3], ["docker", "run", "--rm"])
+
+    def test_run_pipeline_writes_failed_manifests_for_downstream_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            registry_path = root / "registry.json"
+            pipeline_path = root / "pipeline.json"
+            principles_file = root / "principles.md"
+            jobs_file = root / "jobs.md"
+            registry_path.write_text(json.dumps(_failing_registry_payload()), encoding="utf-8")
+            pipeline_path.write_text(json.dumps(_failing_pipeline_payload()), encoding="utf-8")
+            principles_file.write_text("# Principles\n- Clarity matters\n", encoding="utf-8")
+            jobs_file.write_text("# Roles\n- Delivery lead\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(RuntimeError, "simulated downstream failure"):
+                run_pipeline(
+                    PipelineRunRequest(
+                        pipeline_path=pipeline_path,
+                        registry_path=registry_path,
+                        pipeline_inputs={
+                            "principles": principles_file,
+                            "jobs": jobs_file,
+                        },
+                        run_root=root / "runs",
+                        service_runner=FailingServiceRunner(),
+                        run_id="run-failure-001",
+                        validate_schema=False,
+                    )
+                )
+
+            run_manifest = json.loads((root / "runs" / "run-failure-001" / "manifests" / "run.json").read_text(encoding="utf-8"))
+            self.assertEqual(run_manifest["status"], "failed")
+            self.assertIn("simulated downstream failure", run_manifest["error"])
+            self.assertEqual(run_manifest["outputs"], {})
+            self.assertEqual(len(run_manifest["invocationManifests"]), 3)
+
+            upstream_manifest = json.loads(
+                (root / "runs" / "run-failure-001" / "manifests" / "invocations" / "summaries.principles.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(upstream_manifest["status"], "succeeded")
+
+            failed_manifest = json.loads(
+                (root / "runs" / "run-failure-001" / "manifests" / "invocations" / "questioning.combine.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(failed_manifest["status"], "failed")
+            self.assertIn("simulated downstream failure", failed_manifest["error"])
+            self.assertEqual(failed_manifest["outputs"], {})
 
 
 def _registry_payload() -> dict[str, object]:
@@ -527,6 +586,88 @@ def _invalid_output_pipeline_payload() -> dict[str, object]:
 
 def _questions_schema_path() -> str:
     return str((Path(__file__).resolve().parents[1] / "schemas" / "questions.schema.json").resolve())
+
+
+def _failing_registry_payload() -> dict[str, object]:
+    return {
+        "services": [
+            {
+                "id": "summarize-principles",
+                "kind": "transform",
+                "deterministic": True,
+                "description": "Summarize company principles into JSON.",
+                "entrypoint": "docker://summarize-principles",
+                "inputs": [
+                    {"name": "principles", "type": "markdown-document", "mode": "file", "cardinality": "one"}
+                ],
+                "outputs": [
+                    {"name": "summary", "type": "summary-json", "mode": "file", "cardinality": "one"}
+                ],
+            },
+            {
+                "id": "summarize-jobs",
+                "kind": "transform",
+                "deterministic": True,
+                "description": "Summarize job descriptions into JSON.",
+                "entrypoint": "docker://summarize-jobs",
+                "inputs": [
+                    {"name": "jobs", "type": "markdown-document", "mode": "file", "cardinality": "one"}
+                ],
+                "outputs": [
+                    {"name": "summary", "type": "summary-json", "mode": "file", "cardinality": "one"}
+                ],
+            },
+            {
+                "id": "build-failing-question-set",
+                "kind": "transform",
+                "deterministic": True,
+                "description": "Raise a failure after upstream summaries succeed.",
+                "entrypoint": "docker://build-failing-question-set",
+                "inputs": [
+                    {"name": "principles_summary", "type": "summary-json", "mode": "file", "cardinality": "one"},
+                    {"name": "jobs_summary", "type": "summary-json", "mode": "file", "cardinality": "one"}
+                ],
+                "outputs": [
+                    {"name": "questions", "type": "questions-json", "mode": "file", "cardinality": "one"}
+                ],
+            },
+        ]
+    }
+
+
+def _failing_pipeline_payload() -> dict[str, object]:
+    return {
+        "id": "failing-question-pipeline",
+        "inputs": [
+            {"name": "principles", "type": "markdown-document", "mode": "file", "cardinality": "one"},
+            {"name": "jobs", "type": "markdown-document", "mode": "file", "cardinality": "one"}
+        ],
+        "outputs": [
+            {"name": "questions", "type": "questions-json", "mode": "file", "cardinality": "one"}
+        ],
+        "steps": [
+            {
+                "id": "summaries",
+                "invocations": [
+                    {"id": "principles", "service": "summarize-principles"},
+                    {"id": "jobs", "service": "summarize-jobs"}
+                ]
+            },
+            {
+                "id": "questioning",
+                "invocations": [
+                    {"id": "combine", "service": "build-failing-question-set"}
+                ]
+            }
+        ],
+        "edges": [
+            {"from": "pipeline:input.principles", "to": "summaries.principles.principles"},
+            {"from": "pipeline:input.jobs", "to": "summaries.jobs.jobs"},
+            {"from": "summaries.principles.summary", "to": "questioning.combine.principles_summary"},
+            {"from": "summaries.jobs.summary", "to": "questioning.combine.jobs_summary"},
+            {"from": "questioning.combine.questions", "to": "pipeline:output.questions"}
+        ]
+    }
 
 
 if __name__ == "__main__":
