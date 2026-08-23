@@ -13,11 +13,24 @@ The repository currently starts with:
 
 - a service registry contract
 - a pipeline definition contract
-- example registry and pipeline fixtures
+- fixture-driven example registries, runtime configs, and pipelines
 - an initial shared Python runtime package in `src/linksmith_core`
 - an initial local-Python engine package in `src/linksmith_engine`
+- three implemented services in `src/linksmith_services`
 - Python standards and PR review guidance
 - service documentation standards and templates
+
+The current repository shape is still fixture-first.
+
+- most runnable examples are defined in test fixtures rather than as standalone pipeline folders
+- the engine runtime is real and exercised end to end in tests
+- a canonical non-test pipeline folder is not in place yet
+
+Read these docs first if you want the current code shape rather than the earlier design intent:
+
+- [docs/components/engine/linksmith-engine.md](C:/Users/Liam/Documents/GitHub/LinkSmith/docs/components/engine/linksmith-engine.md)
+- [docs/architecture/pipeline.md](C:/Users/Liam/Documents/GitHub/LinkSmith/docs/architecture/pipeline.md)
+- [docs/architecture/registry.md](C:/Users/Liam/Documents/GitHub/LinkSmith/docs/architecture/registry.md)
 
 ## Core Package
 
@@ -44,15 +57,17 @@ python -m unittest discover -s tests
 
 ## Services
 
-The first concrete deterministic service is planned as:
+Implemented services:
 
 - `obsidian-canvas-to-relationships`
+- `json-to-markdown-renderer`
+- `json-to-json-llm-transformer`
 
-It is intended to be container-first and reusable both as a standalone tool and as a future pipeline step.
+All current services are intended to be container-first and reusable both as standalone tools and as future pipeline steps.
 
 ## Engine
 
-The first engine slice is intentionally narrow:
+The current engine slice supports:
 
 - local Python orchestration
 - pipeline and registry loading
@@ -61,6 +76,21 @@ The first engine slice is intentionally narrow:
 - deterministic host run-folder creation
 - service execution through a runner abstraction
 - Docker-backed service execution for containerized services
+- invocation-scoped resource binding
+- output contract enforcement
+- optional JSON Schema validation of emitted JSON artifacts
+- per-invocation and per-run manifests
+
+Current important distinction:
+
+- `pipeline_inputs` are external artifacts supplied at run time
+- invocation `resources` are fixed files declared inside the pipeline definition and resolved by the engine
+
+Current highest-fidelity coverage is still test-driven:
+
+- [tests/test_engine.py](C:/Users/Liam/Documents/GitHub/LinkSmith/tests/test_engine.py) covers invocation-scoped resources with fixture-driven engine runs
+- [tests/test_engine_docker.py](C:/Users/Liam/Documents/GitHub/LinkSmith/tests/test_engine_docker.py) covers real Docker-backed runs, including a live LM Studio path
+- the live Docker test still passes prompt, schema, and template as top-level pipeline inputs rather than invocation resources
 
 ## Review And Quality
 

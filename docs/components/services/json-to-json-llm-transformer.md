@@ -23,6 +23,12 @@ Output:
 
 - `result`: transformed JSON document
 
+Recommended pipeline role:
+
+- `data` is usually true run-time pipeline flow data
+- `prompt` is usually a fixed invocation-scoped resource
+- `schema` is usually a fixed invocation-scoped resource
+
 ## How It Works
 
 1. Load the source JSON, prompt template, and output schema from disk.
@@ -47,6 +53,8 @@ The service accepts LLM runtime settings through CLI arguments, with env default
 - `--max-retries` or `LINKSMITH_LLM_MAX_RETRIES`
 - `--timeout-seconds` or `LINKSMITH_LLM_TIMEOUT_SECONDS`
 
+In engine-driven Docker runs, these values are currently supplied through runtime config environment mappings rather than through pipeline JSON.
+
 ## Why This Shape
 
 This keeps the first LLM slice narrow:
@@ -70,3 +78,12 @@ Current friction:
 
 - output schema validation can happen in `linksmith-core`, but the LLM service still needs the schema contents as an explicit input so it can instruct the model
 - engine runtime config currently passes static CLI args more naturally than dynamic per-service env vars
+
+## Current Test Position
+
+There are two important current test shapes:
+
+- fixture-driven engine tests bind `prompt` and `schema` as invocation resources
+- the highest-fidelity live LM Studio Docker test still passes `prompt` and `schema` as top-level pipeline inputs
+
+That means the code supports invocation resources for this service, but the live Docker example has not yet been reworked to use that shape.

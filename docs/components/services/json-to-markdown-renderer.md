@@ -69,6 +69,12 @@ At pipeline level, this service also makes the need for invocation resources obv
 
 Those should not be modeled as the same category of thing just because both arrive as service inputs.
 
+Current test position:
+
+- fixture-driven engine tests already cover this service with `template` bound as an invocation resource
+- some older Docker-backed examples still pass `template` as a top-level pipeline input
+- the preferred direction is invocation-scoped `template` resources for real pipelines
+
 ## Data Flow
 
 1. load input JSON payload

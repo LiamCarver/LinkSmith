@@ -14,6 +14,8 @@ Its job is to:
 
 The engine is intentionally separate from `linksmith-core`.
 
+This document describes the current implemented engine first, then notes a small amount of remaining design intent where relevant.
+
 ## Why A Separate Engine Layer
 
 The engine solves problems that do not exist for a single isolated service invocation:
@@ -92,7 +94,7 @@ Rule of thumb:
 
 ## Main Components
 
-The initial engine layer should likely contain the following modules:
+The current engine layer contains these implemented modules:
 
 ### `linksmith_engine.pipeline_loader`
 
@@ -101,6 +103,7 @@ Responsibilities:
 - read pipeline JSON
 - validate pipeline structure against schema
 - map JSON into typed engine models
+- resolve invocation `resources` into typed model entries
 
 ### `linksmith_engine.registry_loader`
 
@@ -118,6 +121,9 @@ Responsibilities:
 - confirm services exist in the registry
 - confirm referenced ports exist
 - confirm connected types, modes, and cardinalities are compatible
+- confirm bound invocation resources match service input contracts
+- confirm resource paths exist and match expected file or directory mode
+- reject double-binding of one input by both edge and resource
 
 ### `linksmith_engine.run_layout`
 
@@ -126,14 +132,6 @@ Responsibilities:
 - create deterministic host run-folder structure
 - resolve canonical input, output, manifest, and log paths
 - expose run path helpers used by the rest of the engine
-
-### `linksmith_engine.planner`
-
-Responsibilities:
-
-- resolve invocation dependencies from pipeline edges
-- determine which invocations are ready to run
-- expose topological execution order or ready sets
 
 ### `linksmith_engine.service_runner`
 
@@ -160,33 +158,43 @@ Possible later variants:
 - `LocalProcessServiceRunner`
 - `ContainerizedEngineServiceRunner`
 
-### `linksmith_engine.invocation`
+### `linksmith_engine.engine`
 
 Responsibilities:
 
-- resolve concrete input artifact paths for a single invocation
-- build the invocation manifest
-- call the selected service runner
+- orchestrate the full run loop
+- materialize pipeline inputs into the run folder
+- resolve invocation readiness from incoming edges
+- merge upstream artifacts with invocation resources
+- stage invocation inputs and outputs
 - validate declared outputs after execution
+- project final pipeline outputs
 
-### `linksmith_engine.run_manifest`
+### `linksmith_engine.manifest`
 
 Responsibilities:
 
 - write per-invocation manifests
-- write per-run summary manifest
-- provide stable JSON structures for downstream inspection
+- write the per-run summary manifest
 
-### `linksmith_engine.logging`
+### `linksmith_engine.runtime_loader`
 
 Responsibilities:
 
-- emit stage-oriented engine logs
-- keep logs useful for local runs and later CI-style execution
+- read declarative engine runtime config JSON
+- validate runtime config structure against schema
+- resolve runtime service definitions into a concrete service runner
+- keep Docker image and argument wiring out of pipeline definitions
+
+### `linksmith_engine.models`
+
+Responsibilities:
+
+- typed runtime representations of registry, pipeline, run-path, and manifest concepts
 
 ## Host Run Layout
 
-The engine should materialize each pipeline run into a deterministic host folder.
+The engine currently materializes each pipeline run into a deterministic host folder.
 
 Suggested v1 layout:
 
@@ -225,6 +233,11 @@ Purpose of the layout:
 - `manifests/`
   records what was planned, run, and produced
 
+Current note:
+
+- `pipeline/` currently stores copies of `pipeline.json` and `registry.json`
+- invocation inputs are copied into run-local staging folders rather than mounted from original source locations
+
 ## Invocation Contract
 
 The engine should treat each service invocation as a file-based contract over mounted folders.
@@ -246,6 +259,8 @@ The same principle should apply to fixed per-invocation files such as prompt tem
 - they should be declared in pipeline JSON as invocation resources
 - they should be resolved by the engine into concrete mounted artifacts
 - they should not require duplicate service implementations just because the resource files differ
+
+That behavior is implemented now for invocation `resources`.
 
 ## Data Flow
 
@@ -269,6 +284,12 @@ At a high level, the engine should follow this flow:
 9. continue until all invocations succeed or one blocks the run
 10. project final pipeline outputs into the run `outputs/` folder
 11. write the run summary manifest
+
+Current execution model note:
+
+- the engine currently resolves readiness by scanning remaining invocations for satisfied incoming edges
+- execution is sequential today
+- there is no separate planner module yet
 
 ## Mermaid
 
@@ -302,6 +323,7 @@ The engine should enforce semantic rules that go beyond JSON Schema:
 - pipeline pseudo-endpoints map to declared pipeline inputs/outputs
 - invocation resources map to declared service input ports with compatible type/mode/cardinality
 - invocation outputs required by downstream edges were actually produced
+- pipeline outputs must have incoming edges
 
 ## Failure Modes
 
@@ -323,7 +345,7 @@ These should surface as explicit engine-level failures with invocation context, 
 
 ## Run Manifest Shape
 
-Each invocation should produce a deterministic manifest with at least:
+Each invocation currently produces a deterministic manifest with:
 
 - `invocationId`
 - `stepId`
@@ -331,10 +353,11 @@ Each invocation should produce a deterministic manifest with at least:
 - `status`
 - `inputs`
 - `outputs`
-- `startedAt`
-- `finishedAt`
 - `exitCode`
 - `logPath`
+- optional `error`
+
+The current manifest does not yet record timestamps.
 
 Example shape:
 
@@ -363,27 +386,3 @@ Example shape:
 - Should retries be declared in the pipeline spec, registry, or a separate run policy?
 - Do we want engine support for parallel ready invocations in v1, or strictly sequential execution first?
 - Should the Docker runner read image/tag details from the registry entry directly, or from a separate runtime config mapping?
-
-## Implementation Notes
-
-Recommended first implementation order:
-
-1. typed engine models
-2. pipeline and registry loaders
-3. semantic validator
-4. run-layout helper
-5. planner
-6. service-runner abstraction
-7. Docker service runner
-8. invocation executor
-9. run-manifest writer
-
-Recommended first success criterion:
-
-- one local Python engine command
-- one registry file
-- one pipeline file
-- one containerized service invocation
-- one successful run folder with manifests and logs
-
-This should be enough to prove the architecture before adding retries, parallelism, or richer run policies.

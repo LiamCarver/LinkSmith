@@ -17,6 +17,8 @@ The pipeline also needs to answer a question that became clearer once reusable r
 - which files are true run-time inputs
 - which files are fixed invocation-scoped resources such as prompt templates, Markdown templates, and JSON Schemas
 
+This distinction is implemented in the current engine code.
+
 ## Why A Graph Shape
 
 The pipeline is easier to read if execution units and their connections are declared separately.
@@ -54,6 +56,12 @@ Each invocation declares:
 - optional `resources`
 - optional `inputs`
 - optional `outputs`
+
+Current note:
+
+- `inputs` and `outputs` are parsed by the loader but are not yet used by engine execution
+- the engine currently relies on registry contracts plus graph edges for concrete routing
+- `resources` are implemented and are part of current execution behavior
 
 Each edge declares:
 
@@ -129,6 +137,13 @@ Each resource declares:
 
 These resources are mounted and loaded exactly like ordinary inputs at execution time, but their file paths come from the pipeline definition rather than the external run request.
 
+Current implementation details:
+
+- relative resource paths are resolved relative to the pipeline definition file
+- absolute resource paths are also accepted by the current engine
+- the engine copies resolved resource artifacts into the invocation input staging area before service execution
+- for a `many` resource bound to a directory path, the engine currently expands that directory into its immediate child paths
+
 Conceptually:
 
 - pipeline inputs are resolved from the run request
@@ -162,8 +177,10 @@ Semantic rules to enforce later in the engine:
 - connected modes and cardinalities must be compatible
 - `pipeline:input.*` references must match declared pipeline inputs
 - `pipeline:output.*` references must match declared pipeline outputs
-- resource names should match declared service input ports when they are used as bound inputs
-- resource paths should exist and match declared mode expectations
+- resource names must match declared service input ports when they are used as bound inputs
+- resource paths must exist and match declared mode expectations
+- one service input cannot currently be satisfied by both upstream edges and a bound invocation resource
+- required service inputs must be satisfied by either incoming edges or invocation resources
 
 ## Binding Model
 
@@ -181,6 +198,11 @@ That means a generic service such as `json-to-json-llm-transformer` can be reuse
 - invocation B binds `schema = question-list.schema.json`
 
 Same service implementation, different resources.
+
+That reuse pattern is now covered in code by fixture-driven engine tests for:
+
+- `json-to-markdown-renderer` with a bound `template`
+- `json-to-json-llm-transformer` with bound `prompt` and `schema`
 
 ## Example Shape
 
@@ -268,5 +290,5 @@ Same service implementation, different resources.
 ## Open Questions
 
 - Should step-level retry or cache policy live in pipeline config or service config?
-- Should invocation resource paths always be relative to the pipeline file, or allow explicit absolute paths for local-only runs?
+- Invocation resource paths currently allow both relative and absolute paths. Do we want to keep absolute paths as a supported feature?
 - Should invocations be allowed to alias service ports for readability, or is the service port name enough in v1?
