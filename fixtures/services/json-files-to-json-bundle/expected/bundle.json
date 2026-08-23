@@ -1,0 +1,55 @@
+{
+  "artifactType": "json-bundle",
+  "items": [
+    {
+      "sourceId": "001-client-profile",
+      "fileName": "client-profile.json",
+      "relativePath": "client-profile.json",
+      "data": {
+        "clientName": "Northwind Health",
+        "industry": "Healthcare",
+        "region": "South Africa"
+      }
+    },
+    {
+      "sourceId": "002-principles-summary",
+      "fileName": "principles-summary.json",
+      "relativePath": "principles-summary.json",
+      "data": {
+        "principles": [
+          "Prefer explicit ownership.",
+          "Bias toward small reversible changes."
+        ]
+      }
+    },
+    {
+      "sourceId": "003-risks",
+      "fileName": "risks.json",
+      "relativePath": "risks.json",
+      "data": [
+        {
+          "risk": "Stakeholder alignment",
+          "severity": "high"
+        },
+        {
+          "risk": "Unclear delivery ownership",
+          "severity": "medium"
+        }
+      ]
+    }
+  ],
+  "sourceRefs": [
+    {
+      "sourceId": "001-client-profile",
+      "relativePath": "client-profile.json"
+    },
+    {
+      "sourceId": "002-principles-summary",
+      "relativePath": "principles-summary.json"
+    },
+    {
+      "sourceId": "003-risks",
+      "relativePath": "risks.json"
+    }
+  ]
+}
