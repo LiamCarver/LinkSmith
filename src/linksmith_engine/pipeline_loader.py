@@ -28,13 +28,21 @@ def load_pipeline_definition(
     if validate_schema:
         validator = SchemaValidator(base_dir=schema_base_dir or path.parent)
         validator.validate(payload, _pipeline_schema_ref(path, schema_base_dir))
+    return parse_pipeline_payload(payload, definition_path=path.resolve())
+
+
+def parse_pipeline_payload(
+    payload: dict[str, Any],
+    *,
+    definition_path: Path,
+) -> EnginePipelineDefinition:
     inputs = tuple(_parse_port(item) for item in _optional_list(payload, "inputs"))
     outputs = tuple(_parse_port(item) for item in _optional_list(payload, "outputs"))
     steps = tuple(_parse_step(item) for item in _require_list(payload, "steps"))
     edges = tuple(_parse_edge(item) for item in _require_list(payload, "edges"))
     return EnginePipelineDefinition(
         pipeline_id=_require_string(payload, "id"),
-        definition_path=path.resolve(),
+        definition_path=definition_path,
         name=_optional_string(payload, "name"),
         description=_optional_string(payload, "description"),
         version=_optional_string(payload, "version"),

@@ -1,0 +1,113 @@
+{
+  "id": "obsidian-canvas-summary-markdown",
+  "name": "Obsidian Canvas Summary Markdown",
+  "description": "Convert an Obsidian canvas into relationships JSON, summarize it through an LLM-backed JSON transformation, and render the result as Markdown.",
+  "version": "0.1.0",
+  "inputs": [
+    {
+      "name": "canvas",
+      "type": "obsidian-canvas",
+      "mode": "file",
+      "cardinality": "one",
+      "description": "Source Obsidian canvas file."
+    }
+  ],
+  "outputs": [
+    {
+      "name": "summary",
+      "type": "json-document",
+      "mode": "file",
+      "cardinality": "one",
+      "description": "Structured summary JSON generated from the canvas relationships."
+    },
+    {
+      "name": "document",
+      "type": "markdown-document",
+      "mode": "file",
+      "cardinality": "one",
+      "description": "Rendered Markdown report derived from the summary JSON."
+    }
+  ],
+  "steps": [
+    {
+      "id": "normalize",
+      "description": "Convert the raw canvas into deterministic relationships JSON.",
+      "invocations": [
+        {
+          "id": "canvas",
+          "service": "obsidian-canvas-to-relationships"
+        }
+      ]
+    },
+    {
+      "id": "summarize",
+      "description": "Summarize the canvas relationships into a compact JSON report.",
+      "invocations": [
+        {
+          "id": "canvas",
+          "service": "canvas-relationships-to-summary-json",
+          "resources": [
+            {
+              "name": "prompt",
+              "type": "mustache-template",
+              "mode": "file",
+              "cardinality": "one",
+              "path": "resources/summary.prompt.mustache",
+              "description": "Prompt template for summarizing the normalized canvas JSON."
+            },
+            {
+              "name": "schema",
+              "type": "json-document",
+              "mode": "file",
+              "cardinality": "one",
+              "path": "resources/summary.schema.json",
+              "description": "Required JSON schema for the summary output."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "render",
+      "description": "Render the summary JSON into Markdown.",
+      "invocations": [
+        {
+          "id": "report",
+          "service": "json-to-markdown-renderer",
+          "resources": [
+            {
+              "name": "template",
+              "type": "mustache-template",
+              "mode": "file",
+              "cardinality": "one",
+              "path": "resources/summary-report.template.mustache",
+              "description": "Mustache template used to render the summary Markdown report."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "pipeline:input.canvas",
+      "to": "normalize.canvas.canvas"
+    },
+    {
+      "from": "normalize.canvas.relationships",
+      "to": "summarize.canvas.data"
+    },
+    {
+      "from": "summarize.canvas.result",
+      "to": "pipeline:output.summary"
+    },
+    {
+      "from": "summarize.canvas.result",
+      "to": "render.report.data"
+    },
+    {
+      "from": "render.report.document",
+      "to": "pipeline:output.document"
+    }
+  ]
+}
