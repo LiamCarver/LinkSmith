@@ -98,6 +98,7 @@ def run_pipeline(request: PipelineRunRequest) -> PipelineRunResult:
                     service = service_index[invocation.service_id]
                     prepared_inputs = _prepare_invocation_inputs(
                         run_paths=run_paths,
+                        pipeline=pipeline,
                         step_id=step.step_id,
                         invocation=invocation,
                         service_inputs={port.name: port for port in service.contract.inputs},
@@ -255,6 +256,7 @@ def _all_sources_ready(
 def _prepare_invocation_inputs(
     *,
     run_paths: RunPaths,
+    pipeline: EnginePipelineDefinition,
     step_id: str,
     invocation: InvocationDefinition,
     service_inputs: Mapping[str, PortContract],
@@ -272,6 +274,15 @@ def _prepare_invocation_inputs(
         if sources is None:
             raise ConfigurationError(f"Missing resolved source artifacts for '{edge.from_endpoint}'.")
         grouped_sources.setdefault(target_port, []).extend(sources)
+    for resource in invocation.resources:
+        resolved = _resolve_invocation_resource_paths(
+            pipeline=pipeline,
+            invocation=invocation,
+            resource_name=resource.name,
+            resource_path=resource.path,
+            cardinality=resource.cardinality,
+        )
+        grouped_sources.setdefault(resource.name, []).extend(resolved)
 
     for port_name, sources in grouped_sources.items():
         contract = service_inputs[port_name]
@@ -292,6 +303,32 @@ def _prepare_invocation_inputs(
             raise ConfigurationError(f"Engine does not yet support input mode '{contract.mode}' for invocation prep.")
         prepared[port_name] = copied
     return prepared
+
+
+def _resolve_invocation_resource_paths(
+    *,
+    pipeline: EnginePipelineDefinition,
+    invocation: InvocationDefinition,
+    resource_name: str,
+    resource_path: str,
+    cardinality: str,
+) -> tuple[Path, ...]:
+    candidate = Path(resource_path)
+    resolved = candidate.resolve() if candidate.is_absolute() else (pipeline.definition_path.parent / candidate).resolve()
+    if not resolved.exists():
+        raise ConfigurationError(
+            f"Invocation resource '{invocation.invocation_id}.{resource_name}' does not exist: {resource_path}"
+        )
+    if cardinality == "many":
+        if resolved.is_dir():
+            paths = tuple(sorted(path for path in resolved.iterdir()))
+            if not paths:
+                raise ConfigurationError(
+                    f"Invocation resource '{invocation.invocation_id}.{resource_name}' directory is empty: {resource_path}"
+                )
+            return paths
+        return (resolved,)
+    return (resolved,)
 
 
 def _materialize_pipeline_outputs(

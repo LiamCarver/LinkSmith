@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from pathlib import Path
 
 from .errors import PipelineValidationError
-from .models import EndpointReference, EnginePipelineDefinition, EngineRegisteredService, EngineRegistryDocument, InvocationDefinition
+from .models import (
+    EndpointReference,
+    EnginePipelineDefinition,
+    EngineRegisteredService,
+    EngineRegistryDocument,
+    InvocationDefinition,
+)
 
 
 def validate_pipeline_semantics(
@@ -32,6 +39,13 @@ def validate_pipeline_semantics(
                 errors.append(
                     f"Invocation '{step.step_id}.{invocation.invocation_id}' references unknown service '{invocation.service_id}'."
                 )
+                continue
+            _validate_invocation_resources(
+                pipeline=pipeline,
+                invocation=invocation,
+                service=service_index[invocation.service_id],
+                errors=errors,
+            )
 
     incoming_edges: dict[str, list[EndpointReference]] = defaultdict(list)
     for edge in pipeline.edges:
@@ -75,9 +89,14 @@ def validate_pipeline_semantics(
                 continue
             for port in service.contract.inputs:
                 endpoint = f"{step.step_id}.{invocation.invocation_id}.{port.name}"
-                if len(incoming_edges[endpoint]) == 0:
+                has_resource = any(resource.name == port.name for resource in invocation.resources)
+                if len(incoming_edges[endpoint]) == 0 and not has_resource:
                     errors.append(
-                        f"Required service input '{endpoint}' must have an incoming edge."
+                        f"Required service input '{endpoint}' must have an incoming edge or bound resource."
+                    )
+                if len(incoming_edges[endpoint]) > 0 and has_resource:
+                    errors.append(
+                        f"Service input '{endpoint}' cannot be bound by both an incoming edge and an invocation resource."
                     )
 
     for port in pipeline.outputs:
@@ -89,6 +108,63 @@ def validate_pipeline_semantics(
 
     if errors:
         raise PipelineValidationError(errors)
+
+
+def _validate_invocation_resources(
+    *,
+    pipeline: EnginePipelineDefinition,
+    invocation: InvocationDefinition,
+    service: EngineRegisteredService,
+    errors: list[str],
+) -> None:
+    seen_names: set[str] = set()
+    service_inputs = {port.name: port for port in service.contract.inputs}
+    for resource in invocation.resources:
+        if resource.name in seen_names:
+            errors.append(
+                f"Invocation '{invocation.service_id}' declares duplicate resource name '{resource.name}'."
+            )
+            continue
+        seen_names.add(resource.name)
+        service_port = service_inputs.get(resource.name)
+        if service_port is None:
+            errors.append(
+                f"Invocation resource '{resource.name}' does not match an input port on service '{service.service_id}'."
+            )
+            continue
+        if service_port.type != resource.type:
+            errors.append(
+                f"Invocation resource '{resource.name}' type '{resource.type}' does not match service input type '{service_port.type}'."
+            )
+        if service_port.mode != resource.mode:
+            errors.append(
+                f"Invocation resource '{resource.name}' mode '{resource.mode}' does not match service input mode '{service_port.mode}'."
+            )
+        if service_port.cardinality != resource.cardinality:
+            errors.append(
+                f"Invocation resource '{resource.name}' cardinality '{resource.cardinality}' does not match service input cardinality '{service_port.cardinality}'."
+            )
+        resolved = _resolve_resource_path(pipeline.definition_path, resource.path)
+        if not resolved.exists():
+            errors.append(
+                f"Invocation resource '{resource.name}' path does not exist: {resource.path}"
+            )
+            continue
+        if resource.mode == "file" and not resolved.is_file():
+            errors.append(
+                f"Invocation resource '{resource.name}' expects a file path: {resource.path}"
+            )
+        if resource.mode == "directory" and not resolved.is_dir():
+            errors.append(
+                f"Invocation resource '{resource.name}' expects a directory path: {resource.path}"
+            )
+
+
+def _resolve_resource_path(definition_path: Path, resource_path: str) -> Path:
+    candidate = Path(resource_path)
+    if candidate.is_absolute():
+        return candidate.resolve()
+    return (definition_path.parent / candidate).resolve()
 
 
 def _parse_endpoint(raw: str, errors: list[str], role: str) -> EndpointReference | None:

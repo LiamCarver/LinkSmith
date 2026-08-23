@@ -14,6 +14,7 @@ from linksmith_engine.registry_loader import load_registry_document
 from linksmith_engine.runtime_loader import load_runtime_config, load_service_runner
 from linksmith_engine.service_runner import DockerServiceConfig, DockerServiceRunner, ServiceRunnerRequest, ServiceRunnerResult
 from linksmith_core.models import PortContract
+from linksmith_services.json_to_markdown_renderer import render_markdown_document
 from linksmith_engine.validator import validate_pipeline_semantics
 from tests.json_fixtures import load_fixture_json
 
@@ -139,6 +140,36 @@ class FakeServiceRunner:
             output_file.parent.mkdir(parents=True, exist_ok=True)
             output_file.write_text("# Directory Collision B\n", encoding="utf-8")
             outputs = {"documents": (output_dir,)}
+        elif request.service_id == "json-to-markdown-renderer":
+            payload = json.loads(request.inputs["data"][0].read_text(encoding="utf-8"))
+            template = request.inputs["template"][0].read_text(encoding="utf-8")
+            output_file = request.output_root / "document" / "document.md"
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            output_file.write_text(
+                render_markdown_document(payload, template),
+                encoding="utf-8",
+            )
+            outputs = {"document": (output_file,)}
+        elif request.service_id == "json-to-json-llm-transformer":
+            data = json.loads(request.inputs["data"][0].read_text(encoding="utf-8"))
+            prompt = request.inputs["prompt"][0].read_text(encoding="utf-8")
+            schema = json.loads(request.inputs["schema"][0].read_text(encoding="utf-8"))
+            if not prompt.strip():
+                raise AssertionError("Expected non-empty prompt resource.")
+            if schema.get("type") != "object":
+                raise AssertionError("Expected JSON schema object resource.")
+            output_file = request.output_root / "result" / "result.json"
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            output_file.write_text(
+                json.dumps(
+                    {
+                        "title": data["title_source"],
+                        "bullets": data["bullet_sources"],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            outputs = {"result": (output_file,)}
         else:
             raise AssertionError(f"Unexpected fake service id: {request.service_id}")
         request.log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -289,6 +320,96 @@ class EngineTests(unittest.TestCase):
             self.assertEqual(payload["sources"], ["principles", "jobs"])
             self.assertEqual(len(payload["questions"]), 2)
             self.assertEqual(len(result.invocation_manifests), 3)
+
+    def test_run_pipeline_uses_invocation_resource_template_for_renderer(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            registry_path = root / "registry.json"
+            pipeline_path = root / "pipeline.json"
+            resources_dir = root / "resources"
+            data_file = root / "report.json"
+            registry_path.write_text(
+                json.dumps(_resource_bound_renderer_registry_payload()),
+                encoding="utf-8",
+            )
+            pipeline_path.write_text(
+                json.dumps(_resource_bound_renderer_pipeline_payload()),
+                encoding="utf-8",
+            )
+            resources_dir.mkdir(parents=True, exist_ok=True)
+            (resources_dir / "report.mustache").write_text(
+                _engine_payload("resource_bound_renderer_template"),
+                encoding="utf-8",
+            )
+            data_file.write_text(
+                json.dumps(_engine_payload("resource_bound_renderer_input")),
+                encoding="utf-8",
+            )
+
+            result = run_pipeline(
+                PipelineRunRequest(
+                    pipeline_path=pipeline_path,
+                    registry_path=registry_path,
+                    pipeline_inputs={"data": data_file},
+                    run_root=root / "runs",
+                    service_runner=FakeServiceRunner(),
+                    run_id="run-resource-renderer-001",
+                    validate_schema=False,
+                )
+            )
+
+            output_file = result.outputs["document"][0]
+            self.assertEqual(
+                output_file.read_text(encoding="utf-8"),
+                _engine_payload("resource_bound_renderer_expected_output"),
+            )
+
+    def test_run_pipeline_uses_invocation_resources_for_llm_transformer(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            registry_path = root / "registry.json"
+            pipeline_path = root / "pipeline.json"
+            resources_dir = root / "resources"
+            data_file = root / "analysis-input.json"
+            registry_path.write_text(
+                json.dumps(_resource_bound_llm_registry_payload()),
+                encoding="utf-8",
+            )
+            pipeline_path.write_text(
+                json.dumps(_resource_bound_llm_pipeline_payload()),
+                encoding="utf-8",
+            )
+            resources_dir.mkdir(parents=True, exist_ok=True)
+            (resources_dir / "prompt.mustache").write_text(
+                _engine_payload("resource_bound_llm_prompt"),
+                encoding="utf-8",
+            )
+            (resources_dir / "result.schema.json").write_text(
+                json.dumps(_engine_payload("resource_bound_llm_schema")),
+                encoding="utf-8",
+            )
+            data_file.write_text(
+                json.dumps(_engine_payload("resource_bound_llm_input")),
+                encoding="utf-8",
+            )
+
+            result = run_pipeline(
+                PipelineRunRequest(
+                    pipeline_path=pipeline_path,
+                    registry_path=registry_path,
+                    pipeline_inputs={"data": data_file},
+                    run_root=root / "runs",
+                    service_runner=FakeServiceRunner(),
+                    run_id="run-resource-llm-001",
+                    validate_schema=False,
+                )
+            )
+
+            output_file = result.outputs["result"][0]
+            self.assertEqual(
+                json.loads(output_file.read_text(encoding="utf-8")),
+                _engine_payload("resource_bound_llm_expected_output"),
+            )
 
     def test_run_pipeline_rejects_invalid_json_output_against_declared_schema(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -655,6 +776,61 @@ class EngineTests(unittest.TestCase):
 
             self.assertTrue(any("must have an incoming edge" in error for error in context.exception.errors))
 
+    def test_semantic_validation_rejects_invocation_resource_for_unknown_input_port(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            registry_path = root / "registry.json"
+            pipeline_path = root / "pipeline.json"
+            resources_dir = root / "resources"
+            registry_path.write_text(
+                json.dumps(_resource_bound_renderer_registry_payload()),
+                encoding="utf-8",
+            )
+            pipeline_path.write_text(
+                json.dumps(_invalid_resource_port_pipeline_payload()),
+                encoding="utf-8",
+            )
+            resources_dir.mkdir(parents=True, exist_ok=True)
+            (resources_dir / "report.mustache").write_text("{{title}}", encoding="utf-8")
+
+            registry = load_registry_document(registry_path, validate_schema=False)
+            pipeline = load_pipeline_definition(pipeline_path, validate_schema=False)
+
+            with self.assertRaises(PipelineValidationError) as context:
+                validate_pipeline_semantics(pipeline, registry)
+
+            self.assertTrue(
+                any("does not match an input port" in error for error in context.exception.errors)
+            )
+
+    def test_semantic_validation_rejects_resource_and_edge_for_same_input_port(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            registry_path = root / "registry.json"
+            pipeline_path = root / "pipeline.json"
+            resources_dir = root / "resources"
+            registry_path.write_text(
+                json.dumps(_resource_bound_renderer_registry_payload()),
+                encoding="utf-8",
+            )
+            pipeline_path.write_text(
+                json.dumps(_conflicting_resource_binding_pipeline_payload()),
+                encoding="utf-8",
+            )
+            resources_dir.mkdir(parents=True, exist_ok=True)
+            (resources_dir / "report.mustache").write_text("{{title}}", encoding="utf-8")
+            (resources_dir / "override.mustache").write_text("{{title}}", encoding="utf-8")
+
+            registry = load_registry_document(registry_path, validate_schema=False)
+            pipeline = load_pipeline_definition(pipeline_path, validate_schema=False)
+
+            with self.assertRaises(PipelineValidationError) as context:
+                validate_pipeline_semantics(pipeline, registry)
+
+            self.assertTrue(
+                any("cannot be bound by both an incoming edge and an invocation resource" in error for error in context.exception.errors)
+            )
+
     def test_run_pipeline_rejects_multiple_artifacts_for_single_pipeline_input(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -864,6 +1040,30 @@ def _directory_collision_registry_payload() -> dict[str, object]:
 
 def _directory_collision_pipeline_payload() -> dict[str, object]:
     return _engine_payload("directory_collision_pipeline_payload")
+
+
+def _resource_bound_renderer_registry_payload() -> dict[str, object]:
+    return _engine_payload("resource_bound_renderer_registry_payload")
+
+
+def _resource_bound_renderer_pipeline_payload() -> dict[str, object]:
+    return _engine_payload("resource_bound_renderer_pipeline_payload")
+
+
+def _resource_bound_llm_registry_payload() -> dict[str, object]:
+    return _engine_payload("resource_bound_llm_registry_payload")
+
+
+def _resource_bound_llm_pipeline_payload() -> dict[str, object]:
+    return _engine_payload("resource_bound_llm_pipeline_payload")
+
+
+def _invalid_resource_port_pipeline_payload() -> dict[str, object]:
+    return _engine_payload("invalid_resource_port_pipeline_payload")
+
+
+def _conflicting_resource_binding_pipeline_payload() -> dict[str, object]:
+    return _engine_payload("conflicting_resource_binding_pipeline_payload")
 
 
 if __name__ == "__main__":
