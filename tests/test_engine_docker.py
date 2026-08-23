@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import tempfile
 import unittest
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 from linksmith_core.errors import SchemaValidationError
@@ -19,6 +22,90 @@ def _engine_docker_payload(name: str, *, substitutions: dict[str, str] | None = 
 
 
 class EngineDockerTests(unittest.TestCase):
+    def test_run_pipeline_with_real_lmstudio_llm_transformer_and_markdown_renderer(self) -> None:
+        if shutil.which("docker") is None:
+            self.skipTest("Docker is not available in PATH.")
+
+        live_config = _load_live_lmstudio_config()
+        if live_config is None:
+            self.skipTest("LM Studio is not reachable at the configured host endpoint or no chat model is loaded.")
+
+        repo_root = Path(__file__).resolve().parents[1]
+        fixture_root = repo_root / "fixtures" / "pipelines" / "live-llm-json-to-markdown"
+        llm_image_tag = "linksmith-json-to-json-llm-transformer:engine-live-test"
+        renderer_image_tag = "linksmith-json-to-markdown-renderer:engine-live-test"
+        subprocess.run(
+            [
+                "docker",
+                "build",
+                "-f",
+                str(repo_root / "services" / "json-to-json-llm-transformer" / "Dockerfile"),
+                "-t",
+                llm_image_tag,
+                str(repo_root),
+            ],
+            check=True,
+        )
+        subprocess.run(
+            [
+                "docker",
+                "build",
+                "-f",
+                str(repo_root / "services" / "json-to-markdown-renderer" / "Dockerfile"),
+                "-t",
+                renderer_image_tag,
+                str(repo_root),
+            ],
+            check=True,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            registry_path = root / "registry.json"
+            pipeline_path = root / "pipeline.json"
+            runtime_config_path = root / "runtime.json"
+            registry_path.write_text(json.dumps(_live_llm_registry_payload()), encoding="utf-8")
+            pipeline_path.write_text(json.dumps(_live_llm_pipeline_payload()), encoding="utf-8")
+            runtime_config_path.write_text(
+                json.dumps(
+                    _live_llm_runtime_payload(
+                        llm_image_tag=llm_image_tag,
+                        renderer_image_tag=renderer_image_tag,
+                        container_base_url=live_config["container_base_url"],
+                        api_key=live_config["api_key"],
+                        model=live_config["model"],
+                    )
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_pipeline(
+                PipelineRunRequest(
+                    pipeline_path=pipeline_path,
+                    registry_path=registry_path,
+                    pipeline_inputs={
+                        "data": fixture_root / "input" / "source.data.json",
+                        "prompt": fixture_root / "input" / "transform.prompt.mustache",
+                        "schema": fixture_root / "input" / "result.schema.json",
+                        "template": fixture_root / "input" / "render.template.mustache",
+                    },
+                    run_root=root / "runs",
+                    run_id="run-live-llm-001",
+                    validate_schema=False,
+                    service_runner=load_service_runner(
+                        load_runtime_config(runtime_config_path, validate_schema=False)
+                    ),
+                )
+            )
+
+            actual_result = json.loads(result.outputs["result"][0].read_text(encoding="utf-8"))
+            expected_result = json.loads((fixture_root / "expected" / "result.json").read_text(encoding="utf-8"))
+            actual_document = result.outputs["document"][0].read_text(encoding="utf-8")
+            expected_document = (fixture_root / "expected" / "document.md").read_text(encoding="utf-8")
+
+            self.assertEqual(actual_result, expected_result)
+            self.assertEqual(actual_document, expected_document)
+
     def test_run_pipeline_with_docker_canvas_to_markdown_services(self) -> None:
         if shutil.which("docker") is None:
             self.skipTest("Docker is not available in PATH.")
@@ -443,6 +530,34 @@ def _mixed_failure_pipeline_payload() -> dict[str, object]:
     return _engine_docker_payload("mixed_failure_pipeline_payload")
 
 
+def _live_llm_registry_payload() -> dict[str, object]:
+    return _engine_docker_payload("live_llm_registry_payload")
+
+
+def _live_llm_pipeline_payload() -> dict[str, object]:
+    return _engine_docker_payload("live_llm_pipeline_payload")
+
+
+def _live_llm_runtime_payload(
+    *,
+    llm_image_tag: str,
+    renderer_image_tag: str,
+    container_base_url: str,
+    api_key: str,
+    model: str,
+) -> dict[str, object]:
+    return _engine_docker_payload(
+        "live_llm_runtime_payload",
+        substitutions={
+            "LLM_IMAGE_TAG": llm_image_tag,
+            "RENDERER_IMAGE_TAG": renderer_image_tag,
+            "CONTAINER_BASE_URL": container_base_url,
+            "API_KEY": api_key,
+            "MODEL": model,
+        },
+    )
+
+
 class MixedServiceRunner:
     def __init__(self, *, docker_runner) -> None:
         self._docker_runner = docker_runner
@@ -508,6 +623,48 @@ class MixedFailingServiceRunner:
 
 def _questions_schema_path() -> str:
     return str((Path(__file__).resolve().parents[1] / "schemas" / "questions.schema.json").resolve())
+
+
+def _load_live_lmstudio_config() -> dict[str, str] | None:
+    host_base_url = os.environ.get("LINKSMITH_LIVE_LLM_HOST_BASE_URL", "http://127.0.0.1:1234/v1")
+    container_base_url = os.environ.get(
+        "LINKSMITH_LIVE_LLM_CONTAINER_BASE_URL",
+        "http://host.docker.internal:1234/v1",
+    )
+    api_key = os.environ.get("LINKSMITH_LIVE_LLM_API_KEY", "lm-studio")
+    model = os.environ.get("LINKSMITH_LIVE_LLM_MODEL") or _discover_first_chat_model(host_base_url)
+    if model is None:
+        return None
+    return {
+        "host_base_url": host_base_url,
+        "container_base_url": container_base_url,
+        "api_key": api_key,
+        "model": model,
+    }
+
+
+def _discover_first_chat_model(host_base_url: str) -> str | None:
+    endpoint = f"{host_base_url.rstrip('/')}/models"
+    request = urllib.request.Request(endpoint, method="GET")
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError):
+        return None
+
+    entries = payload.get("data")
+    if not isinstance(entries, list):
+        return None
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        model_id = entry.get("id")
+        if not isinstance(model_id, str) or not model_id:
+            continue
+        if "embed" in model_id.lower():
+            continue
+        return model_id
+    return None
 
 
 if __name__ == "__main__":

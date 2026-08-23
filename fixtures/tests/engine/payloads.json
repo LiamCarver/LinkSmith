@@ -1341,5 +1341,333 @@
         "to": "pipeline:output.bundle"
       }
     ]
+  },
+  "resource_bound_renderer_registry_payload": {
+    "services": [
+      {
+        "id": "json-to-markdown-renderer",
+        "kind": "render",
+        "deterministic": true,
+        "description": "Render Markdown from JSON and a template.",
+        "entrypoint": "docker://json-to-markdown-renderer",
+        "inputs": [
+          {
+            "name": "data",
+            "type": "json-document",
+            "mode": "file",
+            "cardinality": "one"
+          },
+          {
+            "name": "template",
+            "type": "mustache-template",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "document",
+            "type": "markdown-document",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ]
+      }
+    ]
+  },
+  "resource_bound_renderer_pipeline_payload": {
+    "id": "resource-bound-renderer",
+    "inputs": [
+      {
+        "name": "data",
+        "type": "json-document",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "document",
+        "type": "markdown-document",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "steps": [
+      {
+        "id": "render",
+        "invocations": [
+          {
+            "id": "document",
+            "service": "json-to-markdown-renderer",
+            "resources": [
+              {
+                "name": "template",
+                "type": "mustache-template",
+                "mode": "file",
+                "cardinality": "one",
+                "path": "resources/report.mustache"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "from": "pipeline:input.data",
+        "to": "render.document.data"
+      },
+      {
+        "from": "render.document.document",
+        "to": "pipeline:output.document"
+      }
+    ]
+  },
+  "resource_bound_renderer_input": {
+    "title": "Client Risk Snapshot",
+    "bullets": [
+      "Clarify ownership",
+      "Tighten feedback loops"
+    ]
+  },
+  "resource_bound_renderer_template": "# {{title}}\n{{#bullets}}\n- {{.}}\n{{/bullets}}\n",
+  "resource_bound_renderer_expected_output": "# Client Risk Snapshot\n- Clarify ownership\n- Tighten feedback loops\n",
+  "resource_bound_llm_registry_payload": {
+    "services": [
+      {
+        "id": "json-to-json-llm-transformer",
+        "kind": "transform",
+        "deterministic": false,
+        "description": "Transform JSON into another JSON document using an LLM.",
+        "entrypoint": "docker://json-to-json-llm-transformer",
+        "inputs": [
+          {
+            "name": "data",
+            "type": "json-document",
+            "mode": "file",
+            "cardinality": "one"
+          },
+          {
+            "name": "prompt",
+            "type": "mustache-template",
+            "mode": "file",
+            "cardinality": "one"
+          },
+          {
+            "name": "schema",
+            "type": "application/json",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "result",
+            "type": "json-document",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ]
+      }
+    ]
+  },
+  "resource_bound_llm_pipeline_payload": {
+    "id": "resource-bound-llm",
+    "inputs": [
+      {
+        "name": "data",
+        "type": "json-document",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "result",
+        "type": "json-document",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "steps": [
+      {
+        "id": "transform",
+        "invocations": [
+          {
+            "id": "summary",
+            "service": "json-to-json-llm-transformer",
+            "resources": [
+              {
+                "name": "prompt",
+                "type": "mustache-template",
+                "mode": "file",
+                "cardinality": "one",
+                "path": "resources/prompt.mustache"
+              },
+              {
+                "name": "schema",
+                "type": "application/json",
+                "mode": "file",
+                "cardinality": "one",
+                "path": "resources/result.schema.json"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "from": "pipeline:input.data",
+        "to": "transform.summary.data"
+      },
+      {
+        "from": "transform.summary.result",
+        "to": "pipeline:output.result"
+      }
+    ]
+  },
+  "resource_bound_llm_input": {
+    "title_source": "Main delivery concern",
+    "bullet_sources": [
+      "Team roles overlap",
+      "Escalations are informal"
+    ]
+  },
+  "resource_bound_llm_prompt": "Summarize {{title_source}} with bullets.",
+  "resource_bound_llm_schema": {
+    "type": "object",
+    "required": [
+      "title",
+      "bullets"
+    ],
+    "properties": {
+      "title": {
+        "type": "string"
+      },
+      "bullets": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "additionalProperties": false
+  },
+  "resource_bound_llm_expected_output": {
+    "title": "Main delivery concern",
+    "bullets": [
+      "Team roles overlap",
+      "Escalations are informal"
+    ]
+  },
+  "invalid_resource_port_pipeline_payload": {
+    "id": "invalid-resource-port",
+    "inputs": [
+      {
+        "name": "data",
+        "type": "json-document",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "document",
+        "type": "markdown-document",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "steps": [
+      {
+        "id": "render",
+        "invocations": [
+          {
+            "id": "document",
+            "service": "json-to-markdown-renderer",
+            "resources": [
+              {
+                "name": "missing_template",
+                "type": "mustache-template",
+                "mode": "file",
+                "cardinality": "one",
+                "path": "resources/report.mustache"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "from": "pipeline:input.data",
+        "to": "render.document.data"
+      },
+      {
+        "from": "render.document.document",
+        "to": "pipeline:output.document"
+      }
+    ]
+  },
+  "conflicting_resource_binding_pipeline_payload": {
+    "id": "conflicting-resource-binding",
+    "inputs": [
+      {
+        "name": "data",
+        "type": "json-document",
+        "mode": "file",
+        "cardinality": "one"
+      },
+      {
+        "name": "template",
+        "type": "mustache-template",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "document",
+        "type": "markdown-document",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "steps": [
+      {
+        "id": "render",
+        "invocations": [
+          {
+            "id": "document",
+            "service": "json-to-markdown-renderer",
+            "resources": [
+              {
+                "name": "template",
+                "type": "mustache-template",
+                "mode": "file",
+                "cardinality": "one",
+                "path": "resources/override.mustache"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "from": "pipeline:input.data",
+        "to": "render.document.data"
+      },
+      {
+        "from": "pipeline:input.template",
+        "to": "render.document.template"
+      },
+      {
+        "from": "render.document.document",
+        "to": "pipeline:output.document"
+      }
+    ]
   }
 }

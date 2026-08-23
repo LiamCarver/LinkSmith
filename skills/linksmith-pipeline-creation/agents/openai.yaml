@@ -1,0 +1,3 @@
+interface:
+  display_name: "Linksmith Pipeline Creation"
+  short_description: "Design and implement real LinkSmith pipelines with explicit artifacts and invocation resources"

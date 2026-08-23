@@ -8,7 +8,14 @@ from linksmith_core.errors import ConfigurationError
 from linksmith_core.models import JsonValue, PortContract
 from linksmith_core.schemas import SchemaValidator
 
-from .models import EnginePipelineDefinition, InvocationDefinition, PipelineEdge, ServicePortRef, StepDefinition
+from .models import (
+    EnginePipelineDefinition,
+    InvocationDefinition,
+    InvocationResourceDefinition,
+    PipelineEdge,
+    ServicePortRef,
+    StepDefinition,
+)
 
 
 def load_pipeline_definition(
@@ -27,6 +34,7 @@ def load_pipeline_definition(
     edges = tuple(_parse_edge(item) for item in _require_list(payload, "edges"))
     return EnginePipelineDefinition(
         pipeline_id=_require_string(payload, "id"),
+        definition_path=path.resolve(),
         name=_optional_string(payload, "name"),
         description=_optional_string(payload, "description"),
         version=_optional_string(payload, "version"),
@@ -59,8 +67,22 @@ def _parse_invocation(item: Any) -> InvocationDefinition:
         service_id=_require_string(item, "service"),
         description=_optional_string(item, "description"),
         config={str(key): value for key, value in config.items() if isinstance(key, str)},
+        resources=tuple(_parse_resource(resource) for resource in _optional_list(item, "resources")),
         inputs=tuple(_parse_port_ref(port_ref) for port_ref in _optional_list(item, "inputs")),
         outputs=tuple(_parse_port_ref(port_ref) for port_ref in _optional_list(item, "outputs")),
+    )
+
+
+def _parse_resource(item: Any) -> InvocationResourceDefinition:
+    if not isinstance(item, dict):
+        raise ConfigurationError("Invocation resources must be JSON objects.")
+    return InvocationResourceDefinition(
+        name=_require_string(item, "name"),
+        type=_require_string(item, "type"),
+        mode=_require_string(item, "mode"),
+        cardinality=_require_string(item, "cardinality"),
+        path=_require_string(item, "path"),
+        description=_optional_string(item, "description"),
     )
 
 

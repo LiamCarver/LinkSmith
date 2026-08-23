@@ -72,7 +72,23 @@
       "invocations": [
         {
           "id": "questions",
-          "service": "context-to-questions-json"
+          "service": "context-to-questions-json",
+          "resources": [
+            {
+              "name": "prompt",
+              "type": "mustache-template",
+              "mode": "file",
+              "cardinality": "one",
+              "path": "resources/prompts/question-generation.mustache"
+            },
+            {
+              "name": "schema",
+              "type": "application/json",
+              "mode": "file",
+              "cardinality": "one",
+              "path": "resources/schemas/questions.schema.json"
+            }
+          ]
         }
       ]
     },
@@ -81,7 +97,23 @@
       "invocations": [
         {
           "id": "analysis",
-          "service": "answers-and-context-to-analysis-json"
+          "service": "answers-and-context-to-analysis-json",
+          "resources": [
+            {
+              "name": "prompt",
+              "type": "mustache-template",
+              "mode": "file",
+              "cardinality": "one",
+              "path": "resources/prompts/analysis.mustache"
+            },
+            {
+              "name": "schema",
+              "type": "application/json",
+              "mode": "file",
+              "cardinality": "one",
+              "path": "resources/schemas/analysis.schema.json"
+            }
+          ]
         }
       ]
     },
@@ -90,11 +122,29 @@
       "invocations": [
         {
           "id": "risks",
-          "service": "json-to-markdown-render"
+          "service": "json-to-markdown-render",
+          "resources": [
+            {
+              "name": "template",
+              "type": "mustache-template",
+              "mode": "file",
+              "cardinality": "one",
+              "path": "resources/templates/risks-report.mustache"
+            }
+          ]
         },
         {
           "id": "team",
-          "service": "json-to-markdown-render"
+          "service": "json-to-markdown-render",
+          "resources": [
+            {
+              "name": "template",
+              "type": "mustache-template",
+              "mode": "file",
+              "cardinality": "one",
+              "path": "resources/templates/team-leverage-report.mustache"
+            }
+          ]
         }
       ]
     }

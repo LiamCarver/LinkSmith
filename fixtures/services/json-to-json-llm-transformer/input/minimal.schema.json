@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "required": [
+    "title",
+    "bullets"
+  ],
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "bullets": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false
+}

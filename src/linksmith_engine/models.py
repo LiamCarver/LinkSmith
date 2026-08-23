@@ -29,6 +29,7 @@ class DockerRuntimeServiceDefinition:
     image: str
     input_arguments: dict[str, str]
     output_dir_argument: str
+    environment: dict[str, str] = field(default_factory=dict)
     output_file_name_arguments: dict[str, str] = field(default_factory=dict)
     output_file_names: dict[str, str] = field(default_factory=dict)
     schema_base_dir_argument: str | None = None
@@ -51,11 +52,22 @@ class ServicePortRef:
 
 
 @dataclass(frozen=True)
+class InvocationResourceDefinition:
+    name: str
+    type: str
+    mode: str
+    cardinality: str
+    path: str
+    description: str | None = None
+
+
+@dataclass(frozen=True)
 class InvocationDefinition:
     invocation_id: str
     service_id: str
     description: str | None = None
     config: dict[str, JsonValue] = field(default_factory=dict)
+    resources: tuple[InvocationResourceDefinition, ...] = tuple()
     inputs: tuple[ServicePortRef, ...] = tuple()
     outputs: tuple[ServicePortRef, ...] = tuple()
 
@@ -77,6 +89,7 @@ class PipelineEdge:
 @dataclass(frozen=True)
 class EnginePipelineDefinition:
     pipeline_id: str
+    definition_path: Path
     name: str | None
     description: str | None
     version: str | None
