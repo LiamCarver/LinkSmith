@@ -15,6 +15,11 @@ from linksmith_engine.runtime_loader import load_runtime_config, load_service_ru
 from linksmith_engine.service_runner import DockerServiceConfig, DockerServiceRunner, ServiceRunnerRequest, ServiceRunnerResult
 from linksmith_core.models import PortContract
 from linksmith_engine.validator import validate_pipeline_semantics
+from tests.json_fixtures import load_fixture_json
+
+
+def _engine_payload(name: str, *, substitutions: dict[str, str] | None = None):
+    return load_fixture_json("engine/payloads.json", key=name, substitutions=substitutions)
 
 
 class FakeServiceRunner:
@@ -24,7 +29,7 @@ class FakeServiceRunner:
             output_file = request.output_root / "relationships" / "relationships.json"
             output_file.parent.mkdir(parents=True, exist_ok=True)
             output_file.write_text(
-                json.dumps({"groups": [], "ungroupedNodes": [], "edges": []}),
+                json.dumps(_engine_payload("empty_relationships_output")),
                 encoding="utf-8",
             )
             outputs = {"relationships": (output_file,)}
@@ -66,7 +71,7 @@ class FakeServiceRunner:
             output_file = request.output_root / "questions" / "questions.json"
             output_file.parent.mkdir(parents=True, exist_ok=True)
             output_file.write_text(
-                json.dumps({"questions": ["not-an-object"]}),
+                json.dumps(_engine_payload("invalid_questions_output")),
                 encoding="utf-8",
             )
             outputs = {"questions": (output_file,)}
@@ -172,7 +177,7 @@ class EngineTests(unittest.TestCase):
             input_canvas = root / "input.canvas"
             registry_path.write_text(json.dumps(_registry_payload()), encoding="utf-8")
             pipeline_path.write_text(json.dumps(_pipeline_payload()), encoding="utf-8")
-            input_canvas.write_text(json.dumps({"nodes": [], "edges": []}), encoding="utf-8")
+            input_canvas.write_text(json.dumps(_engine_payload("empty_canvas_input")), encoding="utf-8")
 
             result = run_pipeline(
                 PipelineRunRequest(
@@ -188,7 +193,10 @@ class EngineTests(unittest.TestCase):
 
             output_file = result.outputs["relationships"][0]
             self.assertTrue(output_file.exists())
-            self.assertEqual(json.loads(output_file.read_text(encoding="utf-8")), {"groups": [], "ungroupedNodes": [], "edges": []})
+            self.assertEqual(
+                json.loads(output_file.read_text(encoding="utf-8")),
+                _engine_payload("empty_relationships_output"),
+            )
             self.assertTrue(result.run_paths.run_manifest_file.exists())
             self.assertEqual(len(result.invocation_manifests), 1)
 
@@ -660,370 +668,54 @@ class EngineTests(unittest.TestCase):
 
 
 def _registry_payload() -> dict[str, object]:
-    return {
-        "services": [
-            {
-                "id": "obsidian-canvas-to-relationships",
-                "kind": "transform",
-                "deterministic": True,
-                "description": "Convert an Obsidian canvas file into relationships JSON.",
-                "entrypoint": "docker://obsidian-canvas-to-relationships",
-                "inputs": [
-                    {
-                        "name": "canvas",
-                        "type": "obsidian-canvas",
-                        "mode": "file",
-                        "cardinality": "one",
-                    }
-                ],
-                "outputs": [
-                    {
-                        "name": "relationships",
-                        "type": "canvas-relationships",
-                        "mode": "file",
-                        "cardinality": "one",
-                        "schemaRef": "schemas/canvas-relationships.schema.json",
-                    }
-                ],
-            }
-        ]
-    }
+    return _engine_payload("registry_payload")
 
 
 def _pipeline_payload() -> dict[str, object]:
-    return {
-        "id": "canvas-normalize",
-        "inputs": [
-            {
-                "name": "canvas",
-                "type": "obsidian-canvas",
-                "mode": "file",
-                "cardinality": "one",
-            }
-        ],
-        "outputs": [
-            {
-                "name": "relationships",
-                "type": "canvas-relationships",
-                "mode": "file",
-                "cardinality": "one",
-            }
-        ],
-        "steps": [
-            {
-                "id": "normalize",
-                "invocations": [
-                    {
-                        "id": "canvas",
-                        "service": "obsidian-canvas-to-relationships",
-                    }
-                ],
-            }
-        ],
-        "edges": [
-            {
-                "from": "pipeline:input.canvas",
-                "to": "normalize.canvas.canvas",
-            },
-            {
-                "from": "normalize.canvas.relationships",
-                "to": "pipeline:output.relationships",
-            },
-        ],
-    }
+    return _engine_payload("pipeline_payload")
 
 
 def _missing_edge_pipeline_payload() -> dict[str, object]:
-    return {
-        "id": "canvas-missing-edges",
-        "inputs": [
-            {"name": "canvas", "type": "obsidian-canvas", "mode": "file", "cardinality": "one"}
-        ],
-        "outputs": [
-            {"name": "relationships", "type": "canvas-relationships", "mode": "file", "cardinality": "one"}
-        ],
-        "steps": [
-            {"id": "normalize", "invocations": [{"id": "canvas", "service": "obsidian-canvas-to-relationships"}]}
-        ],
-        "edges": [],
-    }
+    return _engine_payload("missing_edge_pipeline_payload")
 
 
 def _runtime_payload() -> dict[str, object]:
-    return {
-        "runner": {
-            "kind": "docker",
-            "services": {
-                "obsidian-canvas-to-relationships": {
-                    "image": "linksmith-obsidian-canvas-to-relationships:test",
-                    "inputArguments": {"canvas": "--input"},
-                    "outputDirArgument": "--output-dir",
-                    "outputFileNameArguments": {"relationships": "--output-file-name"},
-                    "outputFileNames": {"relationships": "relationships.json"},
-                    "schemaBaseDirArgument": "--schema-base-dir",
-                    "schemaBaseDirValue": "/app",
-                    "inputMountRoot": "/data/inputs",
-                    "outputMountRoot": "/data/output"
-                }
-            }
-        }
-    }
+    return _engine_payload("runtime_payload")
 
 
 def _multi_service_registry_payload() -> dict[str, object]:
-    return {
-        "services": [
-            {
-                "id": "summarize-principles",
-                "kind": "transform",
-                "deterministic": True,
-                "description": "Summarize company principles into JSON.",
-                "entrypoint": "docker://summarize-principles",
-                "inputs": [
-                    {"name": "principles", "type": "markdown-document", "mode": "file", "cardinality": "one"}
-                ],
-                "outputs": [
-                    {"name": "summary", "type": "summary-json", "mode": "file", "cardinality": "one"}
-                ],
-            },
-            {
-                "id": "summarize-jobs",
-                "kind": "transform",
-                "deterministic": True,
-                "description": "Summarize job descriptions into JSON.",
-                "entrypoint": "docker://summarize-jobs",
-                "inputs": [
-                    {"name": "jobs", "type": "markdown-document", "mode": "file", "cardinality": "one"}
-                ],
-                "outputs": [
-                    {"name": "summary", "type": "summary-json", "mode": "file", "cardinality": "one"}
-                ],
-            },
-            {
-                "id": "build-question-set",
-                "kind": "transform",
-                "deterministic": True,
-                "description": "Combine summaries into a question set.",
-                "entrypoint": "docker://build-question-set",
-                "inputs": [
-                    {"name": "principles_summary", "type": "summary-json", "mode": "file", "cardinality": "one"},
-                    {"name": "jobs_summary", "type": "summary-json", "mode": "file", "cardinality": "one"}
-                ],
-                "outputs": [
-                    {"name": "questions", "type": "questions-json", "mode": "file", "cardinality": "one"}
-                ],
-            },
-        ]
-    }
+    return _engine_payload("multi_service_registry_payload")
 
 
 def _multi_service_pipeline_payload() -> dict[str, object]:
-    return {
-        "id": "client-question-pipeline",
-        "inputs": [
-            {"name": "principles", "type": "markdown-document", "mode": "file", "cardinality": "one"},
-            {"name": "jobs", "type": "markdown-document", "mode": "file", "cardinality": "one"}
-        ],
-        "outputs": [
-            {"name": "questions", "type": "questions-json", "mode": "file", "cardinality": "one"}
-        ],
-        "steps": [
-            {
-                "id": "summaries",
-                "invocations": [
-                    {"id": "principles", "service": "summarize-principles"},
-                    {"id": "jobs", "service": "summarize-jobs"}
-                ]
-            },
-            {
-                "id": "questioning",
-                "invocations": [
-                    {"id": "combine", "service": "build-question-set"}
-                ]
-            }
-        ],
-        "edges": [
-            {"from": "pipeline:input.principles", "to": "summaries.principles.principles"},
-            {"from": "pipeline:input.jobs", "to": "summaries.jobs.jobs"},
-            {"from": "summaries.principles.summary", "to": "questioning.combine.principles_summary"},
-            {"from": "summaries.jobs.summary", "to": "questioning.combine.jobs_summary"},
-            {"from": "questioning.combine.questions", "to": "pipeline:output.questions"}
-        ]
-    }
+    return _engine_payload("multi_service_pipeline_payload")
 
 
 def _invalid_output_registry_payload(questions_schema_path: str) -> dict[str, object]:
-    return {
-        "services": [
-            {
-                "id": "summarize-principles",
-                "kind": "transform",
-                "deterministic": True,
-                "description": "Summarize company principles into JSON.",
-                "entrypoint": "docker://summarize-principles",
-                "inputs": [
-                    {"name": "principles", "type": "markdown-document", "mode": "file", "cardinality": "one"}
-                ],
-                "outputs": [
-                    {"name": "summary", "type": "summary-json", "mode": "file", "cardinality": "one"}
-                ],
-            },
-            {
-                "id": "summarize-jobs",
-                "kind": "transform",
-                "deterministic": True,
-                "description": "Summarize job descriptions into JSON.",
-                "entrypoint": "docker://summarize-jobs",
-                "inputs": [
-                    {"name": "jobs", "type": "markdown-document", "mode": "file", "cardinality": "one"}
-                ],
-                "outputs": [
-                    {"name": "summary", "type": "summary-json", "mode": "file", "cardinality": "one"}
-                ],
-            },
-            {
-                "id": "build-invalid-question-set",
-                "kind": "transform",
-                "deterministic": True,
-                "description": "Emit invalid questions payload for validation testing.",
-                "entrypoint": "docker://build-invalid-question-set",
-                "inputs": [
-                    {"name": "principles_summary", "type": "summary-json", "mode": "file", "cardinality": "one"},
-                    {"name": "jobs_summary", "type": "summary-json", "mode": "file", "cardinality": "one"}
-                ],
-                "outputs": [
-                    {
-                        "name": "questions",
-                        "type": "questions-json",
-                        "mode": "file",
-                        "cardinality": "one",
-                        "schemaRef": questions_schema_path
-                    }
-                ],
-            },
-        ]
-    }
+    return _engine_payload(
+        "invalid_output_registry_payload",
+        substitutions={"QUESTIONS_SCHEMA_PATH": questions_schema_path},
+    )
 
 
 def _invalid_output_pipeline_payload() -> dict[str, object]:
-    return {
-        "id": "invalid-question-pipeline",
-        "inputs": [
-            {"name": "principles", "type": "markdown-document", "mode": "file", "cardinality": "one"},
-            {"name": "jobs", "type": "markdown-document", "mode": "file", "cardinality": "one"}
-        ],
-        "outputs": [
-            {"name": "questions", "type": "questions-json", "mode": "file", "cardinality": "one"}
-        ],
-        "steps": [
-            {
-                "id": "summaries",
-                "invocations": [
-                    {"id": "principles", "service": "summarize-principles"},
-                    {"id": "jobs", "service": "summarize-jobs"}
-                ]
-            },
-            {
-                "id": "questioning",
-                "invocations": [
-                    {"id": "combine", "service": "build-invalid-question-set"}
-                ]
-            }
-        ],
-        "edges": [
-            {"from": "pipeline:input.principles", "to": "summaries.principles.principles"},
-            {"from": "pipeline:input.jobs", "to": "summaries.jobs.jobs"},
-            {"from": "summaries.principles.summary", "to": "questioning.combine.principles_summary"},
-            {"from": "summaries.jobs.summary", "to": "questioning.combine.jobs_summary"},
-            {"from": "questioning.combine.questions", "to": "pipeline:output.questions"}
-        ]
-    }
+    return _engine_payload("invalid_output_pipeline_payload")
 
 
 def _missing_output_port_registry_payload() -> dict[str, object]:
-    return {
-        "services": [
-            {
-                "id": "summarize-principles",
-                "kind": "transform",
-                "deterministic": True,
-                "description": "Summarize principle markdown into JSON.",
-                "entrypoint": "python://summarize-principles",
-                "inputs": [
-                    {"name": "principles", "type": "markdown-document", "mode": "file", "cardinality": "one"}
-                ],
-                "outputs": [
-                    {"name": "summary", "type": "principles-summary", "mode": "file", "cardinality": "one"}
-                ],
-            },
-            {
-                "id": "summarize-jobs",
-                "kind": "transform",
-                "deterministic": True,
-                "description": "Summarize job markdown into JSON.",
-                "entrypoint": "python://summarize-jobs",
-                "inputs": [
-                    {"name": "jobs", "type": "markdown-document", "mode": "file", "cardinality": "one"}
-                ],
-                "outputs": [
-                    {"name": "summary", "type": "jobs-summary", "mode": "file", "cardinality": "one"}
-                ],
-            },
-            {
-                "id": "build-missing-output-port",
-                "kind": "transform",
-                "deterministic": True,
-                "description": "Return no outputs despite declaring questions.",
-                "entrypoint": "python://build-missing-output-port",
-                "inputs": [
-                    {"name": "principles_summary", "type": "principles-summary", "mode": "file", "cardinality": "one"},
-                    {"name": "jobs_summary", "type": "jobs-summary", "mode": "file", "cardinality": "one"}
-                ],
-                "outputs": [
-                    {"name": "questions", "type": "questions-json", "mode": "file", "cardinality": "one"}
-                ],
-            },
-        ]
-    }
+    return _engine_payload("missing_output_port_registry_payload")
 
 
 def _missing_output_port_pipeline_payload() -> dict[str, object]:
-    return {
-        "id": "missing-output-port-pipeline",
-        "inputs": [
-            {"name": "principles", "type": "markdown-document", "mode": "file", "cardinality": "one"},
-            {"name": "jobs", "type": "markdown-document", "mode": "file", "cardinality": "one"}
-        ],
-        "outputs": [
-            {"name": "questions", "type": "questions-json", "mode": "file", "cardinality": "one"}
-        ],
-        "steps": [
-            {"id": "summaries", "invocations": [{"id": "principles", "service": "summarize-principles"}, {"id": "jobs", "service": "summarize-jobs"}]},
-            {"id": "questioning", "invocations": [{"id": "combine", "service": "build-missing-output-port"}]}
-        ],
-        "edges": [
-            {"from": "pipeline:input.principles", "to": "summaries.principles.principles"},
-            {"from": "pipeline:input.jobs", "to": "summaries.jobs.jobs"},
-            {"from": "summaries.principles.summary", "to": "questioning.combine.principles_summary"},
-            {"from": "summaries.jobs.summary", "to": "questioning.combine.jobs_summary"},
-            {"from": "questioning.combine.questions", "to": "pipeline:output.questions"}
-        ],
-    }
+    return _engine_payload("missing_output_port_pipeline_payload")
 
 
 def _missing_output_file_registry_payload() -> dict[str, object]:
-    payload = _missing_output_port_registry_payload()
-    payload["services"][-1]["id"] = "build-missing-output-file"
-    payload["services"][-1]["description"] = "Return a missing output file path."
-    payload["services"][-1]["entrypoint"] = "python://build-missing-output-file"
-    return payload
+    return _engine_payload("missing_output_file_registry_payload")
 
 
 def _missing_output_file_pipeline_payload() -> dict[str, object]:
-    payload = _missing_output_port_pipeline_payload()
-    payload["id"] = "missing-output-file-pipeline"
-    payload["steps"][-1]["invocations"][0]["service"] = "build-missing-output-file"
-    return payload
+    return _engine_payload("missing_output_file_pipeline_payload")
 
 
 def _questions_schema_path() -> str:
@@ -1031,337 +723,39 @@ def _questions_schema_path() -> str:
 
 
 def _failing_registry_payload() -> dict[str, object]:
-    return {
-        "services": [
-            {
-                "id": "summarize-principles",
-                "kind": "transform",
-                "deterministic": True,
-                "description": "Summarize company principles into JSON.",
-                "entrypoint": "docker://summarize-principles",
-                "inputs": [
-                    {"name": "principles", "type": "markdown-document", "mode": "file", "cardinality": "one"}
-                ],
-                "outputs": [
-                    {"name": "summary", "type": "summary-json", "mode": "file", "cardinality": "one"}
-                ],
-            },
-            {
-                "id": "summarize-jobs",
-                "kind": "transform",
-                "deterministic": True,
-                "description": "Summarize job descriptions into JSON.",
-                "entrypoint": "docker://summarize-jobs",
-                "inputs": [
-                    {"name": "jobs", "type": "markdown-document", "mode": "file", "cardinality": "one"}
-                ],
-                "outputs": [
-                    {"name": "summary", "type": "summary-json", "mode": "file", "cardinality": "one"}
-                ],
-            },
-            {
-                "id": "build-failing-question-set",
-                "kind": "transform",
-                "deterministic": True,
-                "description": "Raise a failure after upstream summaries succeed.",
-                "entrypoint": "docker://build-failing-question-set",
-                "inputs": [
-                    {"name": "principles_summary", "type": "summary-json", "mode": "file", "cardinality": "one"},
-                    {"name": "jobs_summary", "type": "summary-json", "mode": "file", "cardinality": "one"}
-                ],
-                "outputs": [
-                    {"name": "questions", "type": "questions-json", "mode": "file", "cardinality": "one"}
-                ],
-            },
-        ]
-    }
+    return _engine_payload("failing_registry_payload")
 
 
 def _failing_pipeline_payload() -> dict[str, object]:
-    return {
-        "id": "failing-question-pipeline",
-        "inputs": [
-            {"name": "principles", "type": "markdown-document", "mode": "file", "cardinality": "one"},
-            {"name": "jobs", "type": "markdown-document", "mode": "file", "cardinality": "one"}
-        ],
-        "outputs": [
-            {"name": "questions", "type": "questions-json", "mode": "file", "cardinality": "one"}
-        ],
-        "steps": [
-            {
-                "id": "summaries",
-                "invocations": [
-                    {"id": "principles", "service": "summarize-principles"},
-                    {"id": "jobs", "service": "summarize-jobs"}
-                ]
-            },
-            {
-                "id": "questioning",
-                "invocations": [
-                    {"id": "combine", "service": "build-failing-question-set"}
-                ]
-            }
-        ],
-        "edges": [
-            {"from": "pipeline:input.principles", "to": "summaries.principles.principles"},
-            {"from": "pipeline:input.jobs", "to": "summaries.jobs.jobs"},
-            {"from": "summaries.principles.summary", "to": "questioning.combine.principles_summary"},
-            {"from": "summaries.jobs.summary", "to": "questioning.combine.jobs_summary"},
-            {"from": "questioning.combine.questions", "to": "pipeline:output.questions"}
-        ]
-    }
+    return _engine_payload("failing_pipeline_payload")
 
 
 def _many_services_registry_payload() -> dict[str, object]:
-    return {
-        "services": [
-            {
-                "id": "split-principles",
-                "kind": "transform",
-                "deterministic": True,
-                "description": "Split a principles document into multiple markdown files.",
-                "entrypoint": "docker://split-principles",
-                "inputs": [
-                    {"name": "principles", "type": "markdown-document", "mode": "file", "cardinality": "one"}
-                ],
-                "outputs": [
-                    {"name": "documents", "type": "markdown-document", "mode": "file", "cardinality": "many"}
-                ],
-            },
-            {
-                "id": "bundle-principles",
-                "kind": "transform",
-                "deterministic": True,
-                "description": "Bundle multiple markdown principle files.",
-                "entrypoint": "docker://bundle-principles",
-                "inputs": [
-                    {"name": "documents", "type": "markdown-document", "mode": "file", "cardinality": "many"}
-                ],
-                "outputs": [
-                    {"name": "bundle", "type": "summary-json", "mode": "file", "cardinality": "one"}
-                ],
-            },
-            {
-                "id": "bundle-single-principle",
-                "kind": "transform",
-                "deterministic": True,
-                "description": "Bundle a single markdown principle file.",
-                "entrypoint": "docker://bundle-single-principle",
-                "inputs": [
-                    {"name": "document", "type": "markdown-document", "mode": "file", "cardinality": "one"}
-                ],
-                "outputs": [
-                    {"name": "bundle", "type": "summary-json", "mode": "file", "cardinality": "one"}
-                ],
-            },
-        ]
-    }
+    return _engine_payload("many_services_registry_payload")
 
 
 def _many_pipeline_payload() -> dict[str, object]:
-    return {
-        "id": "many-principles-pipeline",
-        "inputs": [
-            {"name": "principles", "type": "markdown-document", "mode": "file", "cardinality": "one"}
-        ],
-        "outputs": [
-            {"name": "bundle", "type": "summary-json", "mode": "file", "cardinality": "one"}
-        ],
-        "steps": [
-            {"id": "split", "invocations": [{"id": "principles", "service": "split-principles"}]},
-            {"id": "bundle", "invocations": [{"id": "all", "service": "bundle-principles"}]}
-        ],
-        "edges": [
-            {"from": "pipeline:input.principles", "to": "split.principles.principles"},
-            {"from": "split.principles.documents", "to": "bundle.all.documents"},
-            {"from": "bundle.all.bundle", "to": "pipeline:output.bundle"}
-        ],
-    }
+    return _engine_payload("many_pipeline_payload")
 
 
 def _invalid_many_to_one_pipeline_payload() -> dict[str, object]:
-    return {
-        "id": "invalid-many-one-pipeline",
-        "inputs": [
-            {"name": "principles", "type": "markdown-document", "mode": "file", "cardinality": "one"}
-        ],
-        "outputs": [
-            {"name": "bundle", "type": "summary-json", "mode": "file", "cardinality": "one"}
-        ],
-        "steps": [
-            {"id": "split", "invocations": [{"id": "principles", "service": "split-principles"}]},
-            {
-                "id": "bundle",
-                "invocations": [
-                    {
-                        "id": "single",
-                        "service": "bundle-single-principle"
-                    }
-                ]
-            }
-        ],
-        "edges": [
-            {"from": "pipeline:input.principles", "to": "split.principles.principles"},
-            {"from": "split.principles.documents", "to": "bundle.single.document"},
-            {"from": "bundle.single.bundle", "to": "pipeline:output.bundle"}
-        ],
-    }
+    return _engine_payload("invalid_many_to_one_pipeline_payload")
 
 
 def _collision_registry_payload() -> dict[str, object]:
-    return {
-        "services": [
-            {
-                "id": "emit-collision-a",
-                "kind": "transform",
-                "deterministic": True,
-                "description": "Emit one markdown file named shared.md.",
-                "entrypoint": "docker://emit-collision-a",
-                "inputs": [
-                    {"name": "trigger", "type": "markdown-document", "mode": "file", "cardinality": "one"}
-                ],
-                "outputs": [
-                    {"name": "documents", "type": "markdown-document", "mode": "file", "cardinality": "many"}
-                ],
-            },
-            {
-                "id": "emit-collision-b",
-                "kind": "transform",
-                "deterministic": True,
-                "description": "Emit one markdown file named shared.md.",
-                "entrypoint": "docker://emit-collision-b",
-                "inputs": [
-                    {"name": "trigger", "type": "markdown-document", "mode": "file", "cardinality": "one"}
-                ],
-                "outputs": [
-                    {"name": "documents", "type": "markdown-document", "mode": "file", "cardinality": "many"}
-                ],
-            },
-            {
-                "id": "bundle-principles",
-                "kind": "transform",
-                "deterministic": True,
-                "description": "Bundle multiple markdown principle files.",
-                "entrypoint": "docker://bundle-principles",
-                "inputs": [
-                    {"name": "documents", "type": "markdown-document", "mode": "file", "cardinality": "many"}
-                ],
-                "outputs": [
-                    {"name": "bundle", "type": "summary-json", "mode": "file", "cardinality": "one"}
-                ],
-            },
-        ]
-    }
+    return _engine_payload("collision_registry_payload")
 
 
 def _collision_pipeline_payload() -> dict[str, object]:
-    return {
-        "id": "collision-pipeline",
-        "inputs": [
-            {"name": "trigger", "type": "markdown-document", "mode": "file", "cardinality": "one"}
-        ],
-        "outputs": [
-            {"name": "bundle", "type": "summary-json", "mode": "file", "cardinality": "one"}
-        ],
-        "steps": [
-            {
-                "id": "emit",
-                "invocations": [
-                    {"id": "a", "service": "emit-collision-a"},
-                    {"id": "b", "service": "emit-collision-b"}
-                ]
-            },
-            {
-                "id": "bundle",
-                "invocations": [{"id": "all", "service": "bundle-principles"}]
-            }
-        ],
-        "edges": [
-            {"from": "pipeline:input.trigger", "to": "emit.a.trigger"},
-            {"from": "pipeline:input.trigger", "to": "emit.b.trigger"},
-            {"from": "emit.a.documents", "to": "bundle.all.documents"},
-            {"from": "emit.b.documents", "to": "bundle.all.documents"},
-            {"from": "bundle.all.bundle", "to": "pipeline:output.bundle"}
-        ],
-    }
+    return _engine_payload("collision_pipeline_payload")
 
 
 def _directory_collision_registry_payload() -> dict[str, object]:
-    return {
-        "services": [
-            {
-                "id": "emit-directory-collision-a",
-                "kind": "transform",
-                "deterministic": True,
-                "description": "Emit one directory containing docs/shared.md.",
-                "entrypoint": "docker://emit-directory-collision-a",
-                "inputs": [
-                    {"name": "trigger", "type": "markdown-document", "mode": "file", "cardinality": "one"}
-                ],
-                "outputs": [
-                    {"name": "documents", "type": "markdown-document-set", "mode": "directory", "cardinality": "one"}
-                ],
-            },
-            {
-                "id": "emit-directory-collision-b",
-                "kind": "transform",
-                "deterministic": True,
-                "description": "Emit one directory containing docs/shared.md.",
-                "entrypoint": "docker://emit-directory-collision-b",
-                "inputs": [
-                    {"name": "trigger", "type": "markdown-document", "mode": "file", "cardinality": "one"}
-                ],
-                "outputs": [
-                    {"name": "documents", "type": "markdown-document-set", "mode": "directory", "cardinality": "one"}
-                ],
-            },
-            {
-                "id": "bundle-directory-principles",
-                "kind": "transform",
-                "deterministic": True,
-                "description": "Bundle markdown files from one merged directory.",
-                "entrypoint": "docker://bundle-directory-principles",
-                "inputs": [
-                    {"name": "documents", "type": "markdown-document-set", "mode": "directory", "cardinality": "many"}
-                ],
-                "outputs": [
-                    {"name": "bundle", "type": "summary-json", "mode": "file", "cardinality": "one"}
-                ],
-            },
-        ]
-    }
+    return _engine_payload("directory_collision_registry_payload")
 
 
 def _directory_collision_pipeline_payload() -> dict[str, object]:
-    return {
-        "id": "directory-collision-pipeline",
-        "inputs": [
-            {"name": "trigger", "type": "markdown-document", "mode": "file", "cardinality": "one"}
-        ],
-        "outputs": [
-            {"name": "bundle", "type": "summary-json", "mode": "file", "cardinality": "one"}
-        ],
-        "steps": [
-            {
-                "id": "emit",
-                "invocations": [
-                    {"id": "a", "service": "emit-directory-collision-a"},
-                    {"id": "b", "service": "emit-directory-collision-b"}
-                ]
-            },
-            {
-                "id": "bundle",
-                "invocations": [{"id": "all", "service": "bundle-directory-principles"}]
-            }
-        ],
-        "edges": [
-            {"from": "pipeline:input.trigger", "to": "emit.a.trigger"},
-            {"from": "pipeline:input.trigger", "to": "emit.b.trigger"},
-            {"from": "emit.a.documents", "to": "bundle.all.documents"},
-            {"from": "emit.b.documents", "to": "bundle.all.documents"},
-            {"from": "bundle.all.bundle", "to": "pipeline:output.bundle"}
-        ],
-    }
+    return _engine_payload("directory_collision_pipeline_payload")
 
 
 if __name__ == "__main__":

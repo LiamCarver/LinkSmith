@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path, PurePath
+from unittest.mock import patch
 
 from linksmith_core.errors import ConfigurationError, SchemaDependencyError
 from linksmith_core.models import (
@@ -17,6 +18,11 @@ from linksmith_core.models import (
 )
 from linksmith_core.runtime import run_service
 from linksmith_core.schemas import SchemaValidator
+from tests.json_fixtures import load_fixture_json
+
+
+def _runtime_payload(name: str):
+    return load_fixture_json("runtime/payloads.json", key=name)
 
 
 class EchoService:
@@ -73,7 +79,7 @@ class RuntimeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             input_file = root / "input.json"
-            input_file.write_text(json.dumps({"value": 42}), encoding="utf-8")
+            input_file.write_text(json.dumps(_runtime_payload("echo_input")), encoding="utf-8")
             output_root = root / "out"
 
             result = run_service(
@@ -85,7 +91,7 @@ class RuntimeTests(unittest.TestCase):
             self.assertTrue(output_file.exists())
             self.assertEqual(
                 json.loads(output_file.read_text(encoding="utf-8")),
-                {"copied": 42},
+                _runtime_payload("echo_output"),
             )
             self.assertEqual(result.service_name, "echo-service")
             self.assertTrue(any(entry.stage == "load" for entry in result.logs))
@@ -122,8 +128,9 @@ class RuntimeTests(unittest.TestCase):
 
     def test_schema_validation_requires_dependency(self) -> None:
         validator = SchemaValidator(base_dir=Path("."))
-        with self.assertRaises(SchemaDependencyError):
-            validator.validate({"a": 1}, "schemas/registry.schema.json")
+        with patch("linksmith_core.schemas.importlib.util.find_spec", return_value=None):
+            with self.assertRaises(SchemaDependencyError):
+                validator.validate({"a": 1}, "schemas/registry.schema.json")
 
     def test_custom_semantic_json_types_are_supported(self) -> None:
         class SemanticJsonService:
@@ -151,14 +158,14 @@ class RuntimeTests(unittest.TestCase):
                 return {
                     "relationships": JsonOutput(
                         relative_path=PurePath("relationships.json"),
-                        data={"groups": [], "ungroupedNodes": [], "edges": []},
+                        data=_runtime_payload("empty_relationships_output"),
                     )
                 }
 
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             input_file = root / "input.canvas"
-            input_file.write_text(json.dumps({"nodes": [], "edges": []}), encoding="utf-8")
+            input_file.write_text(json.dumps(_runtime_payload("empty_canvas_input")), encoding="utf-8")
             result = run_service(
                 SemanticJsonService(),
                 ServiceRunRequest(
@@ -193,7 +200,7 @@ class RuntimeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             input_file = root / "input.json"
-            input_file.write_text(json.dumps({"value": 42}), encoding="utf-8")
+            input_file.write_text(json.dumps(_runtime_payload("echo_input")), encoding="utf-8")
             with self.assertRaises(ConfigurationError):
                 run_service(
                     InvalidOutputService(),
@@ -224,7 +231,7 @@ class RuntimeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             input_file = root / "input.json"
-            input_file.write_text(json.dumps({"value": 42}), encoding="utf-8")
+            input_file.write_text(json.dumps(_runtime_payload("echo_input")), encoding="utf-8")
             result = run_service(
                 OptionalOutputService(),
                 ServiceRunRequest(inputs={"source": input_file}, output_root=root / "out"),
@@ -249,7 +256,7 @@ class RuntimeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             input_file = root / "input.json"
-            input_file.write_text(json.dumps({"value": 42}), encoding="utf-8")
+            input_file.write_text(json.dumps(_runtime_payload("echo_input")), encoding="utf-8")
             with self.assertRaises(ConfigurationError):
                 run_service(
                     EmptyManyOutputService(),

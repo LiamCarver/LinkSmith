@@ -1,0 +1,17 @@
+{
+  "echo_input": {
+    "value": 42
+  },
+  "echo_output": {
+    "copied": 42
+  },
+  "empty_canvas_input": {
+    "nodes": [],
+    "edges": []
+  },
+  "empty_relationships_output": {
+    "groups": [],
+    "ungroupedNodes": [],
+    "edges": []
+  }
+}
