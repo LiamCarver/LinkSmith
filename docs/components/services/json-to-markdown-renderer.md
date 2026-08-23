@@ -40,6 +40,7 @@ Markdown rendering from known JSON and a known template is exact code work. Ther
   - mode: `file`
   - cardinality: `one`
   - schema ref: none
+  - recommended pipeline role: invocation-scoped resource rather than run-time pipeline input in most cases
 
 ## Outputs
 
@@ -60,6 +61,13 @@ The registry entry will need to declare:
 - a container-friendly entrypoint
 
 The runtime config will likely also need a fixed output filename argument such as `document.md`.
+
+At pipeline level, this service also makes the need for invocation resources obvious:
+
+- `data` is usually true run-time flow data from an upstream step
+- `template` is usually a fixed rendering resource bound to one invocation
+
+Those should not be modeled as the same category of thing just because both arrive as service inputs.
 
 ## Data Flow
 

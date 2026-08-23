@@ -233,12 +233,19 @@ At minimum, the engine must know:
 
 - which service image or entrypoint to run
 - which concrete input artifacts map to each service input port
+- which invocation-scoped resource artifacts map to each service input port
 - which output directories belong to each service output port
 - which config values belong to the invocation
 
 The service container should not need pipeline-level awareness. It should only see its own invocation contract.
 
 In the current direction, Docker-specific image and argument wiring belongs in a separate runtime config document rather than in the pipeline JSON itself.
+
+The same principle should apply to fixed per-invocation files such as prompt templates and Markdown templates:
+
+- they should be declared in pipeline JSON as invocation resources
+- they should be resolved by the engine into concrete mounted artifacts
+- they should not require duplicate service implementations just because the resource files differ
 
 ## Data Flow
 
@@ -249,17 +256,19 @@ At a high level, the engine should follow this flow:
 3. run semantic pipeline validation against registry contracts
 4. create the host run layout
 5. materialize pipeline input artifacts into the run
-6. determine which invocations are initially ready
-7. for each ready invocation:
+6. resolve invocation-scoped resource artifacts
+7. determine which invocations are initially ready
+8. for each ready invocation:
    - resolve concrete input artifact paths
+   - merge resolved run-time inputs and invocation resources into one service input set
    - prepare invocation input/output mount folders
    - write invocation manifest
    - run the service container
    - validate declared outputs
    - record status, output paths, and logs
-8. continue until all invocations succeed or one blocks the run
-9. project final pipeline outputs into the run `outputs/` folder
-10. write the run summary manifest
+9. continue until all invocations succeed or one blocks the run
+10. project final pipeline outputs into the run `outputs/` folder
+11. write the run summary manifest
 
 ## Mermaid
 
@@ -269,15 +278,16 @@ flowchart TD
     B --> C["Semantic Validation"]
     C --> D["Create Host Run Layout"]
     D --> E["Materialize Pipeline Inputs"]
-    E --> F["Resolve Ready Invocations"]
-    F --> G["Build Invocation Manifest + Mount Plan"]
-    G --> H["Run Service Container"]
-    H --> I["Validate Emitted Outputs"]
-    I --> J["Record Invocation Manifest + Logs"]
-    J --> K{"More Ready Invocations?"}
-    K -->|Yes| F
-    K -->|No| L["Project Pipeline Outputs"]
-    L --> M["Write Run Summary"]
+    E --> F["Resolve Invocation Resources"]
+    F --> G["Resolve Ready Invocations"]
+    G --> H["Build Invocation Manifest + Mount Plan"]
+    H --> I["Run Service Container"]
+    I --> J["Validate Emitted Outputs"]
+    J --> K["Record Invocation Manifest + Logs"]
+    K --> L{"More Ready Invocations?"}
+    L -->|Yes| G
+    L -->|No| M["Project Pipeline Outputs"]
+    M --> N["Write Run Summary"]
 ```
 
 ## Validation Intent
@@ -290,6 +300,7 @@ The engine should enforce semantic rules that go beyond JSON Schema:
 - connected modes are compatible
 - connected cardinalities are compatible
 - pipeline pseudo-endpoints map to declared pipeline inputs/outputs
+- invocation resources map to declared service input ports with compatible type/mode/cardinality
 - invocation outputs required by downstream edges were actually produced
 
 ## Failure Modes
