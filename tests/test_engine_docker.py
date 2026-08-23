@@ -14,6 +14,78 @@ from linksmith_engine.service_runner import ServiceRunnerResult
 
 
 class EngineDockerTests(unittest.TestCase):
+    def test_run_pipeline_with_docker_canvas_to_markdown_services(self) -> None:
+        if shutil.which("docker") is None:
+            self.skipTest("Docker is not available in PATH.")
+
+        repo_root = Path(__file__).resolve().parents[1]
+        canvas_image_tag = "linksmith-obsidian-canvas-to-relationships:engine-test"
+        renderer_image_tag = "linksmith-json-to-markdown-renderer:engine-test"
+        pipeline_fixture_root = repo_root / "fixtures" / "pipelines" / "canvas-to-markdown"
+        canvas_fixture_root = repo_root / "fixtures" / "services" / "obsidian-canvas-to-relationships"
+        subprocess.run(
+            [
+                "docker",
+                "build",
+                "-f",
+                str(repo_root / "services" / "obsidian-canvas-to-relationships" / "Dockerfile"),
+                "-t",
+                canvas_image_tag,
+                str(repo_root),
+            ],
+            check=True,
+        )
+        subprocess.run(
+            [
+                "docker",
+                "build",
+                "-f",
+                str(repo_root / "services" / "json-to-markdown-renderer" / "Dockerfile"),
+                "-t",
+                renderer_image_tag,
+                str(repo_root),
+            ],
+            check=True,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            registry_path = root / "registry.json"
+            pipeline_path = root / "pipeline.json"
+            runtime_config_path = root / "runtime.json"
+            canvas_file = canvas_fixture_root / "input" / "realistic-nested.canvas"
+            template_file = pipeline_fixture_root / "input" / "relationships-report.template.mustache"
+            registry_path.write_text(json.dumps(_canvas_markdown_registry_payload()), encoding="utf-8")
+            pipeline_path.write_text(json.dumps(_canvas_markdown_pipeline_payload()), encoding="utf-8")
+            runtime_config_path.write_text(
+                json.dumps(_canvas_markdown_runtime_payload(canvas_image_tag, renderer_image_tag)),
+                encoding="utf-8",
+            )
+
+            result = run_pipeline(
+                PipelineRunRequest(
+                    pipeline_path=pipeline_path,
+                    registry_path=registry_path,
+                    pipeline_inputs={
+                        "canvas": canvas_file,
+                        "template": template_file,
+                    },
+                    run_root=root / "runs",
+                    run_id="run-canvas-markdown-001",
+                    validate_schema=False,
+                    service_runner=load_service_runner(
+                        load_runtime_config(runtime_config_path, validate_schema=False)
+                    ),
+                )
+            )
+
+            actual_path = result.outputs["document"][0]
+            expected_path = pipeline_fixture_root / "expected" / "realistic-nested-report.md"
+            actual = actual_path.read_text(encoding="utf-8")
+            expected = expected_path.read_text(encoding="utf-8")
+
+            self.assertEqual(actual, expected)
+
     def test_run_pipeline_with_docker_markdown_renderer_service(self) -> None:
         if shutil.which("docker") is None:
             self.skipTest("Docker is not available in PATH.")
@@ -458,6 +530,109 @@ def _renderer_runtime_payload(image_tag: str) -> dict[str, object]:
                     "outputMountRoot": "/data/output",
                 }
             }
+        }
+    }
+
+
+def _canvas_markdown_registry_payload() -> dict[str, object]:
+    return {
+        "services": [
+            {
+                "id": "obsidian-canvas-to-relationships",
+                "kind": "transform",
+                "deterministic": True,
+                "description": "Convert an Obsidian canvas file into relationships JSON.",
+                "entrypoint": "docker://obsidian-canvas-to-relationships",
+                "inputs": [
+                    {"name": "canvas", "type": "obsidian-canvas", "mode": "file", "cardinality": "one"}
+                ],
+                "outputs": [
+                    {
+                        "name": "relationships",
+                        "type": "canvas-relationships",
+                        "mode": "file",
+                        "cardinality": "one",
+                        "schemaRef": "schemas/canvas-relationships.schema.json",
+                    }
+                ],
+            },
+            {
+                "id": "json-to-markdown-renderer",
+                "kind": "render",
+                "deterministic": True,
+                "description": "Render Markdown from relationships JSON and a Mustache template.",
+                "entrypoint": "docker://json-to-markdown-renderer",
+                "inputs": [
+                    {
+                        "name": "data",
+                        "type": "canvas-relationships",
+                        "mode": "file",
+                        "cardinality": "one",
+                    },
+                    {"name": "template", "type": "mustache-template", "mode": "file", "cardinality": "one"},
+                ],
+                "outputs": [
+                    {"name": "document", "type": "markdown-document", "mode": "file", "cardinality": "one"}
+                ],
+            },
+        ]
+    }
+
+
+def _canvas_markdown_pipeline_payload() -> dict[str, object]:
+    return {
+        "id": "canvas-to-markdown",
+        "inputs": [
+            {"name": "canvas", "type": "obsidian-canvas", "mode": "file", "cardinality": "one"},
+            {"name": "template", "type": "mustache-template", "mode": "file", "cardinality": "one"},
+        ],
+        "outputs": [
+            {"name": "document", "type": "markdown-document", "mode": "file", "cardinality": "one"}
+        ],
+        "steps": [
+            {"id": "normalize", "invocations": [{"id": "canvas", "service": "obsidian-canvas-to-relationships"}]},
+            {"id": "render", "invocations": [{"id": "report", "service": "json-to-markdown-renderer"}]},
+        ],
+        "edges": [
+            {"from": "pipeline:input.canvas", "to": "normalize.canvas.canvas"},
+            {"from": "normalize.canvas.relationships", "to": "render.report.data"},
+            {"from": "pipeline:input.template", "to": "render.report.template"},
+            {"from": "render.report.document", "to": "pipeline:output.document"},
+        ],
+    }
+
+
+def _canvas_markdown_runtime_payload(
+    canvas_image_tag: str, renderer_image_tag: str
+) -> dict[str, object]:
+    return {
+        "runner": {
+            "kind": "docker",
+            "services": {
+                "obsidian-canvas-to-relationships": {
+                    "image": canvas_image_tag,
+                    "inputArguments": {"canvas": "--input"},
+                    "outputDirArgument": "--output-dir",
+                    "outputFileNameArguments": {"relationships": "--output-file-name"},
+                    "outputFileNames": {"relationships": "relationships.json"},
+                    "schemaBaseDirArgument": "--schema-base-dir",
+                    "schemaBaseDirValue": "/app",
+                    "inputMountRoot": "/data/inputs",
+                    "outputMountRoot": "/data/output",
+                },
+                "json-to-markdown-renderer": {
+                    "image": renderer_image_tag,
+                    "inputArguments": {
+                        "data": "--data",
+                        "template": "--template",
+                    },
+                    "outputDirArgument": "--output-dir",
+                    "outputFileNameArguments": {"document": "--output-file-name"},
+                    "outputFileNames": {"document": "document.md"},
+                    "inputMountRoot": "/data/inputs",
+                    "outputMountRoot": "/data/output",
+                },
+            },
         }
     }
 
