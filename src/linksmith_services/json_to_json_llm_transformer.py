@@ -93,6 +93,7 @@ def render_prompt(payload: dict[str, Any], template: str, output_schema: dict[st
         template,
         {
             "input": payload,
+            "input_json": json.dumps(payload, indent=2, ensure_ascii=False),
             "output_schema": output_schema,
             "output_schema_json": json.dumps(output_schema, indent=2, ensure_ascii=False),
         },

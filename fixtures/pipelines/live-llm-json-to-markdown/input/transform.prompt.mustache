@@ -1,0 +1,18 @@
+Return JSON only.
+
+Read the input object and produce exactly one JSON object with this shape:
+
+- `title`: copy `input.title_source` exactly, verbatim
+- `bullets`: copy `input.bullet_sources` exactly, verbatim, preserving order
+
+Rules:
+- Do not paraphrase
+- Do not add or remove fields
+- Do not add commentary
+- Return only one JSON object
+
+Input:
+{{{input_json}}}
+
+Required output schema:
+{{{output_schema_json}}}

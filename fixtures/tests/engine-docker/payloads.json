@@ -694,5 +694,214 @@
         "to": "pipeline:output.question_bundle"
       }
     ]
+  },
+  "live_llm_registry_payload": {
+    "services": [
+      {
+        "id": "json-to-json-llm-transformer",
+        "kind": "transform",
+        "deterministic": false,
+        "description": "Transform JSON into JSON through an OpenAI-compatible chat-completions API.",
+        "entrypoint": "docker://json-to-json-llm-transformer",
+        "inputs": [
+          {
+            "name": "data",
+            "type": "json-document",
+            "mode": "file",
+            "cardinality": "one"
+          },
+          {
+            "name": "prompt",
+            "type": "mustache-template",
+            "mode": "file",
+            "cardinality": "one"
+          },
+          {
+            "name": "schema",
+            "type": "json-document",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "result",
+            "type": "json-document",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ]
+      },
+      {
+        "id": "json-to-markdown-renderer",
+        "kind": "render",
+        "deterministic": true,
+        "description": "Render Markdown from JSON and a Mustache template.",
+        "entrypoint": "docker://json-to-markdown-renderer",
+        "inputs": [
+          {
+            "name": "data",
+            "type": "json-document",
+            "mode": "file",
+            "cardinality": "one"
+          },
+          {
+            "name": "template",
+            "type": "mustache-template",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "document",
+            "type": "markdown-document",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ]
+      }
+    ]
+  },
+  "live_llm_pipeline_payload": {
+    "id": "live-llm-json-to-markdown",
+    "inputs": [
+      {
+        "name": "data",
+        "type": "json-document",
+        "mode": "file",
+        "cardinality": "one"
+      },
+      {
+        "name": "prompt",
+        "type": "mustache-template",
+        "mode": "file",
+        "cardinality": "one"
+      },
+      {
+        "name": "schema",
+        "type": "json-document",
+        "mode": "file",
+        "cardinality": "one"
+      },
+      {
+        "name": "template",
+        "type": "mustache-template",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "result",
+        "type": "json-document",
+        "mode": "file",
+        "cardinality": "one"
+      },
+      {
+        "name": "document",
+        "type": "markdown-document",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "steps": [
+      {
+        "id": "transform",
+        "invocations": [
+          {
+            "id": "summary",
+            "service": "json-to-json-llm-transformer"
+          }
+        ]
+      },
+      {
+        "id": "render",
+        "invocations": [
+          {
+            "id": "report",
+            "service": "json-to-markdown-renderer"
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "from": "pipeline:input.data",
+        "to": "transform.summary.data"
+      },
+      {
+        "from": "pipeline:input.prompt",
+        "to": "transform.summary.prompt"
+      },
+      {
+        "from": "pipeline:input.schema",
+        "to": "transform.summary.schema"
+      },
+      {
+        "from": "transform.summary.result",
+        "to": "pipeline:output.result"
+      },
+      {
+        "from": "transform.summary.result",
+        "to": "render.report.data"
+      },
+      {
+        "from": "pipeline:input.template",
+        "to": "render.report.template"
+      },
+      {
+        "from": "render.report.document",
+        "to": "pipeline:output.document"
+      }
+    ]
+  },
+  "live_llm_runtime_payload": {
+    "runner": {
+      "kind": "docker",
+      "services": {
+        "json-to-json-llm-transformer": {
+          "image": "__LLM_IMAGE_TAG__",
+          "inputArguments": {
+            "data": "--data",
+            "prompt": "--prompt",
+            "schema": "--schema"
+          },
+          "outputDirArgument": "--output-dir",
+          "outputFileNameArguments": {
+            "result": "--output-file-name"
+          },
+          "outputFileNames": {
+            "result": "result.json"
+          },
+          "inputMountRoot": "/data/inputs",
+          "outputMountRoot": "/data/output",
+          "environment": {
+            "LINKSMITH_LLM_BASE_URL": "__CONTAINER_BASE_URL__",
+            "LINKSMITH_LLM_API_KEY": "__API_KEY__",
+            "LINKSMITH_LLM_MODEL": "__MODEL__",
+            "LINKSMITH_LLM_TEMPERATURE": "0",
+            "LINKSMITH_LLM_MAX_RETRIES": "2",
+            "LINKSMITH_LLM_TIMEOUT_SECONDS": "120"
+          }
+        },
+        "json-to-markdown-renderer": {
+          "image": "__RENDERER_IMAGE_TAG__",
+          "inputArguments": {
+            "data": "--data",
+            "template": "--template"
+          },
+          "outputDirArgument": "--output-dir",
+          "outputFileNameArguments": {
+            "document": "--output-file-name"
+          },
+          "outputFileNames": {
+            "document": "document.md"
+          },
+          "inputMountRoot": "/data/inputs",
+          "outputMountRoot": "/data/output"
+        }
+      }
+    }
   }
 }
