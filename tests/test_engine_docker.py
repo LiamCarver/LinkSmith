@@ -11,9 +11,86 @@ from linksmith_core.errors import SchemaValidationError
 from linksmith_engine.engine import PipelineRunRequest, run_pipeline
 from linksmith_engine.runtime_loader import load_runtime_config, load_service_runner
 from linksmith_engine.service_runner import ServiceRunnerResult
+from tests.json_fixtures import load_fixture_json
+
+
+def _engine_docker_payload(name: str, *, substitutions: dict[str, str] | None = None):
+    return load_fixture_json("engine-docker/payloads.json", key=name, substitutions=substitutions)
 
 
 class EngineDockerTests(unittest.TestCase):
+    def test_run_pipeline_with_docker_canvas_to_markdown_services(self) -> None:
+        if shutil.which("docker") is None:
+            self.skipTest("Docker is not available in PATH.")
+
+        repo_root = Path(__file__).resolve().parents[1]
+        canvas_image_tag = "linksmith-obsidian-canvas-to-relationships:engine-test"
+        renderer_image_tag = "linksmith-json-to-markdown-renderer:engine-test"
+        pipeline_fixture_root = repo_root / "fixtures" / "pipelines" / "canvas-to-markdown"
+        canvas_fixture_root = repo_root / "fixtures" / "services" / "obsidian-canvas-to-relationships"
+        subprocess.run(
+            [
+                "docker",
+                "build",
+                "-f",
+                str(repo_root / "services" / "obsidian-canvas-to-relationships" / "Dockerfile"),
+                "-t",
+                canvas_image_tag,
+                str(repo_root),
+            ],
+            check=True,
+        )
+        subprocess.run(
+            [
+                "docker",
+                "build",
+                "-f",
+                str(repo_root / "services" / "json-to-markdown-renderer" / "Dockerfile"),
+                "-t",
+                renderer_image_tag,
+                str(repo_root),
+            ],
+            check=True,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            registry_path = root / "registry.json"
+            pipeline_path = root / "pipeline.json"
+            runtime_config_path = root / "runtime.json"
+            canvas_file = canvas_fixture_root / "input" / "realistic-nested.canvas"
+            template_file = pipeline_fixture_root / "input" / "relationships-report.template.mustache"
+            registry_path.write_text(json.dumps(_canvas_markdown_registry_payload()), encoding="utf-8")
+            pipeline_path.write_text(json.dumps(_canvas_markdown_pipeline_payload()), encoding="utf-8")
+            runtime_config_path.write_text(
+                json.dumps(_canvas_markdown_runtime_payload(canvas_image_tag, renderer_image_tag)),
+                encoding="utf-8",
+            )
+
+            result = run_pipeline(
+                PipelineRunRequest(
+                    pipeline_path=pipeline_path,
+                    registry_path=registry_path,
+                    pipeline_inputs={
+                        "canvas": canvas_file,
+                        "template": template_file,
+                    },
+                    run_root=root / "runs",
+                    run_id="run-canvas-markdown-001",
+                    validate_schema=False,
+                    service_runner=load_service_runner(
+                        load_runtime_config(runtime_config_path, validate_schema=False)
+                    ),
+                )
+            )
+
+            actual_path = result.outputs["document"][0]
+            expected_path = pipeline_fixture_root / "expected" / "realistic-nested-report.md"
+            actual = actual_path.read_text(encoding="utf-8")
+            expected = expected_path.read_text(encoding="utf-8")
+
+            self.assertEqual(actual, expected)
+
     def test_run_pipeline_with_docker_markdown_renderer_service(self) -> None:
         if shutil.which("docker") is None:
             self.skipTest("Docker is not available in PATH.")
@@ -98,15 +175,7 @@ class EngineDockerTests(unittest.TestCase):
             pipeline_path.write_text(json.dumps(_pipeline_payload()), encoding="utf-8")
             runtime_config_path.write_text(json.dumps(_runtime_payload(image_tag)), encoding="utf-8")
             input_canvas.write_text(
-                json.dumps(
-                    {
-                        "nodes": [
-                            {"id": "group-one", "type": "group", "x": 0, "y": 0, "width": 200, "height": 200, "label": "Group"},
-                            {"id": "node-one", "type": "text", "x": 10, "y": 20, "width": 100, "height": 50, "text": "Hello"},
-                        ],
-                        "edges": [],
-                    }
-                ),
+                json.dumps(_engine_docker_payload("simple_canvas_input")),
                 encoding="utf-8",
             )
 
@@ -159,15 +228,7 @@ class EngineDockerTests(unittest.TestCase):
             pipeline_path.write_text(json.dumps(_mixed_pipeline_payload()), encoding="utf-8")
             runtime_config_path.write_text(json.dumps(_runtime_payload(image_tag)), encoding="utf-8")
             input_canvas.write_text(
-                json.dumps(
-                    {
-                        "nodes": [
-                            {"id": "group-one", "type": "group", "x": 0, "y": 0, "width": 200, "height": 200, "label": "Group"},
-                            {"id": "node-one", "type": "text", "x": 10, "y": 20, "width": 100, "height": 50, "text": "Hello"},
-                        ],
-                        "edges": [],
-                    }
-                ),
+                json.dumps(_engine_docker_payload("simple_canvas_input")),
                 encoding="utf-8",
             )
 
@@ -222,15 +283,7 @@ class EngineDockerTests(unittest.TestCase):
             pipeline_path.write_text(json.dumps(_mixed_invalid_pipeline_payload()), encoding="utf-8")
             runtime_config_path.write_text(json.dumps(_runtime_payload(image_tag)), encoding="utf-8")
             input_canvas.write_text(
-                json.dumps(
-                    {
-                        "nodes": [
-                            {"id": "group-one", "type": "group", "x": 0, "y": 0, "width": 200, "height": 200, "label": "Group"},
-                            {"id": "node-one", "type": "text", "x": 10, "y": 20, "width": 100, "height": 50, "text": "Hello"},
-                        ],
-                        "edges": [],
-                    }
-                ),
+                json.dumps(_engine_docker_payload("simple_canvas_input")),
                 encoding="utf-8",
             )
 
@@ -278,15 +331,7 @@ class EngineDockerTests(unittest.TestCase):
             pipeline_path.write_text(json.dumps(_mixed_failure_pipeline_payload()), encoding="utf-8")
             runtime_config_path.write_text(json.dumps(_runtime_payload(image_tag)), encoding="utf-8")
             input_canvas.write_text(
-                json.dumps(
-                    {
-                        "nodes": [
-                            {"id": "group-one", "type": "group", "x": 0, "y": 0, "width": 200, "height": 200, "label": "Group"},
-                            {"id": "node-one", "type": "text", "x": 10, "y": 20, "width": 100, "height": 50, "text": "Hello"},
-                        ],
-                        "edges": [],
-                    }
-                ),
+                json.dumps(_engine_docker_payload("simple_canvas_input")),
                 encoding="utf-8",
             )
 
@@ -328,306 +373,74 @@ class EngineDockerTests(unittest.TestCase):
 
 
 def _registry_payload() -> dict[str, object]:
-    return {
-        "services": [
-            {
-                "id": "obsidian-canvas-to-relationships",
-                "kind": "transform",
-                "deterministic": True,
-                "description": "Convert an Obsidian canvas file into relationships JSON.",
-                "entrypoint": "docker://obsidian-canvas-to-relationships",
-                "inputs": [
-                    {
-                        "name": "canvas",
-                        "type": "obsidian-canvas",
-                        "mode": "file",
-                        "cardinality": "one",
-                    }
-                ],
-                "outputs": [
-                    {
-                        "name": "relationships",
-                        "type": "canvas-relationships",
-                        "mode": "file",
-                        "cardinality": "one",
-                        "schemaRef": "schemas/canvas-relationships.schema.json",
-                    }
-                ],
-            }
-        ]
-    }
+    return _engine_docker_payload("registry_payload")
 
 
 def _pipeline_payload() -> dict[str, object]:
-    return {
-        "id": "canvas-normalize",
-        "inputs": [
-            {"name": "canvas", "type": "obsidian-canvas", "mode": "file", "cardinality": "one"}
-        ],
-        "outputs": [
-            {"name": "relationships", "type": "canvas-relationships", "mode": "file", "cardinality": "one"}
-        ],
-        "steps": [
-            {"id": "normalize", "invocations": [{"id": "canvas", "service": "obsidian-canvas-to-relationships"}]}
-        ],
-        "edges": [
-            {"from": "pipeline:input.canvas", "to": "normalize.canvas.canvas"},
-            {"from": "normalize.canvas.relationships", "to": "pipeline:output.relationships"},
-        ],
-    }
+    return _engine_docker_payload("pipeline_payload")
 
 
 def _runtime_payload(image_tag: str) -> dict[str, object]:
-    return {
-        "runner": {
-            "kind": "docker",
-            "services": {
-                "obsidian-canvas-to-relationships": {
-                    "image": image_tag,
-                    "inputArguments": {"canvas": "--input"},
-                    "outputDirArgument": "--output-dir",
-                    "outputFileNameArguments": {"relationships": "--output-file-name"},
-                    "outputFileNames": {"relationships": "relationships.json"},
-                    "schemaBaseDirArgument": "--schema-base-dir",
-                    "schemaBaseDirValue": "/app",
-                    "inputMountRoot": "/data/inputs",
-                    "outputMountRoot": "/data/output"
-                }
-            }
-        }
-    }
+    return _engine_docker_payload("runtime_payload", substitutions={"IMAGE_TAG": image_tag})
 
 
 def _renderer_registry_payload() -> dict[str, object]:
-    return {
-        "services": [
-            {
-                "id": "json-to-markdown-renderer",
-                "kind": "render",
-                "deterministic": True,
-                "description": "Render Markdown from JSON and a Mustache template.",
-                "entrypoint": "docker://json-to-markdown-renderer",
-                "inputs": [
-                    {"name": "data", "type": "json-document", "mode": "file", "cardinality": "one"},
-                    {"name": "template", "type": "mustache-template", "mode": "file", "cardinality": "one"},
-                ],
-                "outputs": [
-                    {"name": "document", "type": "markdown-document", "mode": "file", "cardinality": "one"}
-                ],
-            }
-        ]
-    }
+    return _engine_docker_payload("renderer_registry_payload")
 
 
 def _renderer_pipeline_payload() -> dict[str, object]:
-    return {
-        "id": "render-basic-report",
-        "inputs": [
-            {"name": "data", "type": "json-document", "mode": "file", "cardinality": "one"},
-            {"name": "template", "type": "mustache-template", "mode": "file", "cardinality": "one"},
-        ],
-        "outputs": [
-            {"name": "document", "type": "markdown-document", "mode": "file", "cardinality": "one"}
-        ],
-        "steps": [
-            {"id": "render", "invocations": [{"id": "report", "service": "json-to-markdown-renderer"}]}
-        ],
-        "edges": [
-            {"from": "pipeline:input.data", "to": "render.report.data"},
-            {"from": "pipeline:input.template", "to": "render.report.template"},
-            {"from": "render.report.document", "to": "pipeline:output.document"},
-        ],
-    }
+    return _engine_docker_payload("renderer_pipeline_payload")
 
 
 def _renderer_runtime_payload(image_tag: str) -> dict[str, object]:
-    return {
-        "runner": {
-            "kind": "docker",
-            "services": {
-                "json-to-markdown-renderer": {
-                    "image": image_tag,
-                    "inputArguments": {
-                        "data": "--data",
-                        "template": "--template",
-                    },
-                    "outputDirArgument": "--output-dir",
-                    "outputFileNameArguments": {"document": "--output-file-name"},
-                    "outputFileNames": {"document": "document.md"},
-                    "inputMountRoot": "/data/inputs",
-                    "outputMountRoot": "/data/output",
-                }
-            }
-        }
-    }
+    return _engine_docker_payload("renderer_runtime_payload", substitutions={"IMAGE_TAG": image_tag})
+
+
+def _canvas_markdown_registry_payload() -> dict[str, object]:
+    return _engine_docker_payload("canvas_markdown_registry_payload")
+
+
+def _canvas_markdown_pipeline_payload() -> dict[str, object]:
+    return _engine_docker_payload("canvas_markdown_pipeline_payload")
+
+
+def _canvas_markdown_runtime_payload(
+    canvas_image_tag: str, renderer_image_tag: str
+) -> dict[str, object]:
+    return _engine_docker_payload(
+        "canvas_markdown_runtime_payload",
+        substitutions={
+            "CANVAS_IMAGE_TAG": canvas_image_tag,
+            "RENDERER_IMAGE_TAG": renderer_image_tag,
+        },
+    )
 
 
 def _mixed_registry_payload() -> dict[str, object]:
-    return {
-        "services": [
-            {
-                "id": "obsidian-canvas-to-relationships",
-                "kind": "transform",
-                "deterministic": True,
-                "description": "Convert an Obsidian canvas file into relationships JSON.",
-                "entrypoint": "docker://obsidian-canvas-to-relationships",
-                "inputs": [
-                    {"name": "canvas", "type": "obsidian-canvas", "mode": "file", "cardinality": "one"}
-                ],
-                "outputs": [
-                    {"name": "relationships", "type": "canvas-relationships", "mode": "file", "cardinality": "one"}
-                ],
-            },
-            {
-                "id": "build-question-bundle",
-                "kind": "transform",
-                "deterministic": True,
-                "description": "Build question bundle from relationships JSON.",
-                "entrypoint": "python://build-question-bundle",
-                "inputs": [
-                    {"name": "relationships", "type": "canvas-relationships", "mode": "file", "cardinality": "one"}
-                ],
-                "outputs": [
-                    {"name": "question_bundle", "type": "questions-json", "mode": "file", "cardinality": "one"}
-                ],
-            }
-        ]
-    }
+    return _engine_docker_payload("mixed_registry_payload")
 
 
 def _mixed_pipeline_payload() -> dict[str, object]:
-    return {
-        "id": "canvas-question-bundle",
-        "inputs": [
-            {"name": "canvas", "type": "obsidian-canvas", "mode": "file", "cardinality": "one"}
-        ],
-        "outputs": [
-            {"name": "question_bundle", "type": "questions-json", "mode": "file", "cardinality": "one"}
-        ],
-        "steps": [
-            {"id": "normalize", "invocations": [{"id": "canvas", "service": "obsidian-canvas-to-relationships"}]},
-            {"id": "bundle", "invocations": [{"id": "questions", "service": "build-question-bundle"}]}
-        ],
-        "edges": [
-            {"from": "pipeline:input.canvas", "to": "normalize.canvas.canvas"},
-            {"from": "normalize.canvas.relationships", "to": "bundle.questions.relationships"},
-            {"from": "bundle.questions.question_bundle", "to": "pipeline:output.question_bundle"}
-        ],
-    }
+    return _engine_docker_payload("mixed_pipeline_payload")
 
 
 def _mixed_invalid_registry_payload(questions_schema_path: str) -> dict[str, object]:
-    return {
-        "services": [
-            {
-                "id": "obsidian-canvas-to-relationships",
-                "kind": "transform",
-                "deterministic": True,
-                "description": "Convert an Obsidian canvas file into relationships JSON.",
-                "entrypoint": "docker://obsidian-canvas-to-relationships",
-                "inputs": [
-                    {"name": "canvas", "type": "obsidian-canvas", "mode": "file", "cardinality": "one"}
-                ],
-                "outputs": [
-                    {"name": "relationships", "type": "canvas-relationships", "mode": "file", "cardinality": "one"}
-                ],
-            },
-            {
-                "id": "build-invalid-question-bundle",
-                "kind": "transform",
-                "deterministic": True,
-                "description": "Emit invalid question bundle payload.",
-                "entrypoint": "python://build-invalid-question-bundle",
-                "inputs": [
-                    {"name": "relationships", "type": "canvas-relationships", "mode": "file", "cardinality": "one"}
-                ],
-                "outputs": [
-                    {
-                        "name": "question_bundle",
-                        "type": "questions-json",
-                        "mode": "file",
-                        "cardinality": "one",
-                        "schemaRef": questions_schema_path
-                    }
-                ],
-            }
-        ]
-    }
+    return _engine_docker_payload(
+        "mixed_invalid_registry_payload",
+        substitutions={"QUESTIONS_SCHEMA_PATH": questions_schema_path},
+    )
 
 
 def _mixed_invalid_pipeline_payload() -> dict[str, object]:
-    return {
-        "id": "invalid-canvas-question-bundle",
-        "inputs": [
-            {"name": "canvas", "type": "obsidian-canvas", "mode": "file", "cardinality": "one"}
-        ],
-        "outputs": [
-            {"name": "question_bundle", "type": "questions-json", "mode": "file", "cardinality": "one"}
-        ],
-        "steps": [
-            {"id": "normalize", "invocations": [{"id": "canvas", "service": "obsidian-canvas-to-relationships"}]},
-            {"id": "bundle", "invocations": [{"id": "questions", "service": "build-invalid-question-bundle"}]}
-        ],
-        "edges": [
-            {"from": "pipeline:input.canvas", "to": "normalize.canvas.canvas"},
-            {"from": "normalize.canvas.relationships", "to": "bundle.questions.relationships"},
-            {"from": "bundle.questions.question_bundle", "to": "pipeline:output.question_bundle"}
-        ],
-    }
+    return _engine_docker_payload("mixed_invalid_pipeline_payload")
 
 
 def _mixed_failure_registry_payload() -> dict[str, object]:
-    return {
-        "services": [
-            {
-                "id": "obsidian-canvas-to-relationships",
-                "kind": "transform",
-                "deterministic": True,
-                "description": "Convert an Obsidian canvas file into relationships JSON.",
-                "entrypoint": "docker://obsidian-canvas-to-relationships",
-                "inputs": [
-                    {"name": "canvas", "type": "obsidian-canvas", "mode": "file", "cardinality": "one"}
-                ],
-                "outputs": [
-                    {"name": "relationships", "type": "canvas-relationships", "mode": "file", "cardinality": "one"}
-                ],
-            },
-            {
-                "id": "build-failing-question-bundle",
-                "kind": "transform",
-                "deterministic": True,
-                "description": "Raise failure after upstream docker success.",
-                "entrypoint": "python://build-failing-question-bundle",
-                "inputs": [
-                    {"name": "relationships", "type": "canvas-relationships", "mode": "file", "cardinality": "one"}
-                ],
-                "outputs": [
-                    {"name": "question_bundle", "type": "questions-json", "mode": "file", "cardinality": "one"}
-                ],
-            }
-        ]
-    }
+    return _engine_docker_payload("mixed_failure_registry_payload")
 
 
 def _mixed_failure_pipeline_payload() -> dict[str, object]:
-    return {
-        "id": "failing-canvas-question-bundle",
-        "inputs": [
-            {"name": "canvas", "type": "obsidian-canvas", "mode": "file", "cardinality": "one"}
-        ],
-        "outputs": [
-            {"name": "question_bundle", "type": "questions-json", "mode": "file", "cardinality": "one"}
-        ],
-        "steps": [
-            {"id": "normalize", "invocations": [{"id": "canvas", "service": "obsidian-canvas-to-relationships"}]},
-            {"id": "bundle", "invocations": [{"id": "questions", "service": "build-failing-question-bundle"}]}
-        ],
-        "edges": [
-            {"from": "pipeline:input.canvas", "to": "normalize.canvas.canvas"},
-            {"from": "normalize.canvas.relationships", "to": "bundle.questions.relationships"},
-            {"from": "bundle.questions.question_bundle", "to": "pipeline:output.question_bundle"}
-        ],
-    }
+    return _engine_docker_payload("mixed_failure_pipeline_payload")
 
 
 class MixedServiceRunner:
@@ -670,7 +483,7 @@ class MixedInvalidServiceRunner:
             output_file = request.output_root / "question_bundle" / "question-bundle.json"
             output_file.parent.mkdir(parents=True, exist_ok=True)
             output_file.write_text(
-                json.dumps({"questions": ["not-an-object"]}),
+                json.dumps(_engine_docker_payload("invalid_question_bundle_output")),
                 encoding="utf-8",
             )
             request.log_path.parent.mkdir(parents=True, exist_ok=True)

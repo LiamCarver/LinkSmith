@@ -1,0 +1,34 @@
+# Canvas Relationship Report
+
+## Top-Level Groups
+
+{{#groups}}
+- {{label}} (`{{id}}`)
+{{#nodes}}
+  - Node: {{text}} (`{{id}}`)
+{{/nodes}}
+{{#groups}}
+  - Child Group: {{label}} (`{{id}}`)
+{{#nodes}}
+    - Node: {{text}} (`{{id}}`)
+{{/nodes}}
+{{#groups}}
+    - Nested Group: {{label}} (`{{id}}`)
+{{#nodes}}
+      - Node: {{text}} (`{{id}}`)
+{{/nodes}}
+{{/groups}}
+{{/groups}}
+{{/groups}}
+
+## Ungrouped Nodes
+
+{{#ungroupedNodes}}
+- {{text}} (`{{id}}`)
+{{/ungroupedNodes}}
+
+## Edges
+
+{{#edges}}
+- {{fromNode}} -> {{toNode}} | from={{fromGroupId}} | to={{toGroupId}} | shared={{lowestSharedGroupId}}
+{{/edges}}

@@ -1,0 +1,1345 @@
+{
+  "empty_canvas_input": {
+    "nodes": [],
+    "edges": []
+  },
+  "empty_relationships_output": {
+    "groups": [],
+    "ungroupedNodes": [],
+    "edges": []
+  },
+  "invalid_questions_output": {
+    "questions": [
+      "not-an-object"
+    ]
+  },
+  "registry_payload": {
+    "services": [
+      {
+        "id": "obsidian-canvas-to-relationships",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Convert an Obsidian canvas file into relationships JSON.",
+        "entrypoint": "docker://obsidian-canvas-to-relationships",
+        "inputs": [
+          {
+            "name": "canvas",
+            "type": "obsidian-canvas",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "relationships",
+            "type": "canvas-relationships",
+            "mode": "file",
+            "cardinality": "one",
+            "schemaRef": "schemas/canvas-relationships.schema.json"
+          }
+        ]
+      }
+    ]
+  },
+  "pipeline_payload": {
+    "id": "canvas-normalize",
+    "inputs": [
+      {
+        "name": "canvas",
+        "type": "obsidian-canvas",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "relationships",
+        "type": "canvas-relationships",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "steps": [
+      {
+        "id": "normalize",
+        "invocations": [
+          {
+            "id": "canvas",
+            "service": "obsidian-canvas-to-relationships"
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "from": "pipeline:input.canvas",
+        "to": "normalize.canvas.canvas"
+      },
+      {
+        "from": "normalize.canvas.relationships",
+        "to": "pipeline:output.relationships"
+      }
+    ]
+  },
+  "missing_edge_pipeline_payload": {
+    "id": "canvas-missing-edges",
+    "inputs": [
+      {
+        "name": "canvas",
+        "type": "obsidian-canvas",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "relationships",
+        "type": "canvas-relationships",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "steps": [
+      {
+        "id": "normalize",
+        "invocations": [
+          {
+            "id": "canvas",
+            "service": "obsidian-canvas-to-relationships"
+          }
+        ]
+      }
+    ],
+    "edges": []
+  },
+  "runtime_payload": {
+    "runner": {
+      "kind": "docker",
+      "services": {
+        "obsidian-canvas-to-relationships": {
+          "image": "linksmith-obsidian-canvas-to-relationships:test",
+          "inputArguments": {
+            "canvas": "--input"
+          },
+          "outputDirArgument": "--output-dir",
+          "outputFileNameArguments": {
+            "relationships": "--output-file-name"
+          },
+          "outputFileNames": {
+            "relationships": "relationships.json"
+          },
+          "schemaBaseDirArgument": "--schema-base-dir",
+          "schemaBaseDirValue": "/app",
+          "inputMountRoot": "/data/inputs",
+          "outputMountRoot": "/data/output"
+        }
+      }
+    }
+  },
+  "multi_service_registry_payload": {
+    "services": [
+      {
+        "id": "summarize-principles",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Summarize company principles into JSON.",
+        "entrypoint": "docker://summarize-principles",
+        "inputs": [
+          {
+            "name": "principles",
+            "type": "markdown-document",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "summary",
+            "type": "summary-json",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ]
+      },
+      {
+        "id": "summarize-jobs",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Summarize job descriptions into JSON.",
+        "entrypoint": "docker://summarize-jobs",
+        "inputs": [
+          {
+            "name": "jobs",
+            "type": "markdown-document",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "summary",
+            "type": "summary-json",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ]
+      },
+      {
+        "id": "build-question-set",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Combine summaries into a question set.",
+        "entrypoint": "docker://build-question-set",
+        "inputs": [
+          {
+            "name": "principles_summary",
+            "type": "summary-json",
+            "mode": "file",
+            "cardinality": "one"
+          },
+          {
+            "name": "jobs_summary",
+            "type": "summary-json",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "questions",
+            "type": "questions-json",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ]
+      }
+    ]
+  },
+  "multi_service_pipeline_payload": {
+    "id": "client-question-pipeline",
+    "inputs": [
+      {
+        "name": "principles",
+        "type": "markdown-document",
+        "mode": "file",
+        "cardinality": "one"
+      },
+      {
+        "name": "jobs",
+        "type": "markdown-document",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "questions",
+        "type": "questions-json",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "steps": [
+      {
+        "id": "summaries",
+        "invocations": [
+          {
+            "id": "principles",
+            "service": "summarize-principles"
+          },
+          {
+            "id": "jobs",
+            "service": "summarize-jobs"
+          }
+        ]
+      },
+      {
+        "id": "questioning",
+        "invocations": [
+          {
+            "id": "combine",
+            "service": "build-question-set"
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "from": "pipeline:input.principles",
+        "to": "summaries.principles.principles"
+      },
+      {
+        "from": "pipeline:input.jobs",
+        "to": "summaries.jobs.jobs"
+      },
+      {
+        "from": "summaries.principles.summary",
+        "to": "questioning.combine.principles_summary"
+      },
+      {
+        "from": "summaries.jobs.summary",
+        "to": "questioning.combine.jobs_summary"
+      },
+      {
+        "from": "questioning.combine.questions",
+        "to": "pipeline:output.questions"
+      }
+    ]
+  },
+  "invalid_output_registry_payload": {
+    "services": [
+      {
+        "id": "summarize-principles",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Summarize company principles into JSON.",
+        "entrypoint": "docker://summarize-principles",
+        "inputs": [
+          {
+            "name": "principles",
+            "type": "markdown-document",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "summary",
+            "type": "summary-json",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ]
+      },
+      {
+        "id": "summarize-jobs",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Summarize job descriptions into JSON.",
+        "entrypoint": "docker://summarize-jobs",
+        "inputs": [
+          {
+            "name": "jobs",
+            "type": "markdown-document",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "summary",
+            "type": "summary-json",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ]
+      },
+      {
+        "id": "build-invalid-question-set",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Emit invalid questions payload for validation testing.",
+        "entrypoint": "docker://build-invalid-question-set",
+        "inputs": [
+          {
+            "name": "principles_summary",
+            "type": "summary-json",
+            "mode": "file",
+            "cardinality": "one"
+          },
+          {
+            "name": "jobs_summary",
+            "type": "summary-json",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "questions",
+            "type": "questions-json",
+            "mode": "file",
+            "cardinality": "one",
+            "schemaRef": "__QUESTIONS_SCHEMA_PATH__"
+          }
+        ]
+      }
+    ]
+  },
+  "invalid_output_pipeline_payload": {
+    "id": "invalid-question-pipeline",
+    "inputs": [
+      {
+        "name": "principles",
+        "type": "markdown-document",
+        "mode": "file",
+        "cardinality": "one"
+      },
+      {
+        "name": "jobs",
+        "type": "markdown-document",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "questions",
+        "type": "questions-json",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "steps": [
+      {
+        "id": "summaries",
+        "invocations": [
+          {
+            "id": "principles",
+            "service": "summarize-principles"
+          },
+          {
+            "id": "jobs",
+            "service": "summarize-jobs"
+          }
+        ]
+      },
+      {
+        "id": "questioning",
+        "invocations": [
+          {
+            "id": "combine",
+            "service": "build-invalid-question-set"
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "from": "pipeline:input.principles",
+        "to": "summaries.principles.principles"
+      },
+      {
+        "from": "pipeline:input.jobs",
+        "to": "summaries.jobs.jobs"
+      },
+      {
+        "from": "summaries.principles.summary",
+        "to": "questioning.combine.principles_summary"
+      },
+      {
+        "from": "summaries.jobs.summary",
+        "to": "questioning.combine.jobs_summary"
+      },
+      {
+        "from": "questioning.combine.questions",
+        "to": "pipeline:output.questions"
+      }
+    ]
+  },
+  "missing_output_port_registry_payload": {
+    "services": [
+      {
+        "id": "summarize-principles",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Summarize principle markdown into JSON.",
+        "entrypoint": "python://summarize-principles",
+        "inputs": [
+          {
+            "name": "principles",
+            "type": "markdown-document",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "summary",
+            "type": "principles-summary",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ]
+      },
+      {
+        "id": "summarize-jobs",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Summarize job markdown into JSON.",
+        "entrypoint": "python://summarize-jobs",
+        "inputs": [
+          {
+            "name": "jobs",
+            "type": "markdown-document",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "summary",
+            "type": "jobs-summary",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ]
+      },
+      {
+        "id": "build-missing-output-port",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Return no outputs despite declaring questions.",
+        "entrypoint": "python://build-missing-output-port",
+        "inputs": [
+          {
+            "name": "principles_summary",
+            "type": "principles-summary",
+            "mode": "file",
+            "cardinality": "one"
+          },
+          {
+            "name": "jobs_summary",
+            "type": "jobs-summary",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "questions",
+            "type": "questions-json",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ]
+      }
+    ]
+  },
+  "missing_output_port_pipeline_payload": {
+    "id": "missing-output-port-pipeline",
+    "inputs": [
+      {
+        "name": "principles",
+        "type": "markdown-document",
+        "mode": "file",
+        "cardinality": "one"
+      },
+      {
+        "name": "jobs",
+        "type": "markdown-document",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "questions",
+        "type": "questions-json",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "steps": [
+      {
+        "id": "summaries",
+        "invocations": [
+          {
+            "id": "principles",
+            "service": "summarize-principles"
+          },
+          {
+            "id": "jobs",
+            "service": "summarize-jobs"
+          }
+        ]
+      },
+      {
+        "id": "questioning",
+        "invocations": [
+          {
+            "id": "combine",
+            "service": "build-missing-output-port"
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "from": "pipeline:input.principles",
+        "to": "summaries.principles.principles"
+      },
+      {
+        "from": "pipeline:input.jobs",
+        "to": "summaries.jobs.jobs"
+      },
+      {
+        "from": "summaries.principles.summary",
+        "to": "questioning.combine.principles_summary"
+      },
+      {
+        "from": "summaries.jobs.summary",
+        "to": "questioning.combine.jobs_summary"
+      },
+      {
+        "from": "questioning.combine.questions",
+        "to": "pipeline:output.questions"
+      }
+    ]
+  },
+  "missing_output_file_registry_payload": {
+    "services": [
+      {
+        "id": "summarize-principles",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Summarize principle markdown into JSON.",
+        "entrypoint": "python://summarize-principles",
+        "inputs": [
+          {
+            "name": "principles",
+            "type": "markdown-document",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "summary",
+            "type": "principles-summary",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ]
+      },
+      {
+        "id": "summarize-jobs",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Summarize job markdown into JSON.",
+        "entrypoint": "python://summarize-jobs",
+        "inputs": [
+          {
+            "name": "jobs",
+            "type": "markdown-document",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "summary",
+            "type": "jobs-summary",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ]
+      },
+      {
+        "id": "build-missing-output-file",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Return a missing output file path.",
+        "entrypoint": "python://build-missing-output-file",
+        "inputs": [
+          {
+            "name": "principles_summary",
+            "type": "principles-summary",
+            "mode": "file",
+            "cardinality": "one"
+          },
+          {
+            "name": "jobs_summary",
+            "type": "jobs-summary",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "questions",
+            "type": "questions-json",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ]
+      }
+    ]
+  },
+  "missing_output_file_pipeline_payload": {
+    "id": "missing-output-file-pipeline",
+    "inputs": [
+      {
+        "name": "principles",
+        "type": "markdown-document",
+        "mode": "file",
+        "cardinality": "one"
+      },
+      {
+        "name": "jobs",
+        "type": "markdown-document",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "questions",
+        "type": "questions-json",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "steps": [
+      {
+        "id": "summaries",
+        "invocations": [
+          {
+            "id": "principles",
+            "service": "summarize-principles"
+          },
+          {
+            "id": "jobs",
+            "service": "summarize-jobs"
+          }
+        ]
+      },
+      {
+        "id": "questioning",
+        "invocations": [
+          {
+            "id": "combine",
+            "service": "build-missing-output-file"
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "from": "pipeline:input.principles",
+        "to": "summaries.principles.principles"
+      },
+      {
+        "from": "pipeline:input.jobs",
+        "to": "summaries.jobs.jobs"
+      },
+      {
+        "from": "summaries.principles.summary",
+        "to": "questioning.combine.principles_summary"
+      },
+      {
+        "from": "summaries.jobs.summary",
+        "to": "questioning.combine.jobs_summary"
+      },
+      {
+        "from": "questioning.combine.questions",
+        "to": "pipeline:output.questions"
+      }
+    ]
+  },
+  "failing_registry_payload": {
+    "services": [
+      {
+        "id": "summarize-principles",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Summarize company principles into JSON.",
+        "entrypoint": "docker://summarize-principles",
+        "inputs": [
+          {
+            "name": "principles",
+            "type": "markdown-document",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "summary",
+            "type": "summary-json",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ]
+      },
+      {
+        "id": "summarize-jobs",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Summarize job descriptions into JSON.",
+        "entrypoint": "docker://summarize-jobs",
+        "inputs": [
+          {
+            "name": "jobs",
+            "type": "markdown-document",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "summary",
+            "type": "summary-json",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ]
+      },
+      {
+        "id": "build-failing-question-set",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Raise a failure after upstream summaries succeed.",
+        "entrypoint": "docker://build-failing-question-set",
+        "inputs": [
+          {
+            "name": "principles_summary",
+            "type": "summary-json",
+            "mode": "file",
+            "cardinality": "one"
+          },
+          {
+            "name": "jobs_summary",
+            "type": "summary-json",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "questions",
+            "type": "questions-json",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ]
+      }
+    ]
+  },
+  "failing_pipeline_payload": {
+    "id": "failing-question-pipeline",
+    "inputs": [
+      {
+        "name": "principles",
+        "type": "markdown-document",
+        "mode": "file",
+        "cardinality": "one"
+      },
+      {
+        "name": "jobs",
+        "type": "markdown-document",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "questions",
+        "type": "questions-json",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "steps": [
+      {
+        "id": "summaries",
+        "invocations": [
+          {
+            "id": "principles",
+            "service": "summarize-principles"
+          },
+          {
+            "id": "jobs",
+            "service": "summarize-jobs"
+          }
+        ]
+      },
+      {
+        "id": "questioning",
+        "invocations": [
+          {
+            "id": "combine",
+            "service": "build-failing-question-set"
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "from": "pipeline:input.principles",
+        "to": "summaries.principles.principles"
+      },
+      {
+        "from": "pipeline:input.jobs",
+        "to": "summaries.jobs.jobs"
+      },
+      {
+        "from": "summaries.principles.summary",
+        "to": "questioning.combine.principles_summary"
+      },
+      {
+        "from": "summaries.jobs.summary",
+        "to": "questioning.combine.jobs_summary"
+      },
+      {
+        "from": "questioning.combine.questions",
+        "to": "pipeline:output.questions"
+      }
+    ]
+  },
+  "many_services_registry_payload": {
+    "services": [
+      {
+        "id": "split-principles",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Split a principles document into multiple markdown files.",
+        "entrypoint": "docker://split-principles",
+        "inputs": [
+          {
+            "name": "principles",
+            "type": "markdown-document",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "documents",
+            "type": "markdown-document",
+            "mode": "file",
+            "cardinality": "many"
+          }
+        ]
+      },
+      {
+        "id": "bundle-principles",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Bundle multiple markdown principle files.",
+        "entrypoint": "docker://bundle-principles",
+        "inputs": [
+          {
+            "name": "documents",
+            "type": "markdown-document",
+            "mode": "file",
+            "cardinality": "many"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "bundle",
+            "type": "summary-json",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ]
+      },
+      {
+        "id": "bundle-single-principle",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Bundle a single markdown principle file.",
+        "entrypoint": "docker://bundle-single-principle",
+        "inputs": [
+          {
+            "name": "document",
+            "type": "markdown-document",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "bundle",
+            "type": "summary-json",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ]
+      }
+    ]
+  },
+  "many_pipeline_payload": {
+    "id": "many-principles-pipeline",
+    "inputs": [
+      {
+        "name": "principles",
+        "type": "markdown-document",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "bundle",
+        "type": "summary-json",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "steps": [
+      {
+        "id": "split",
+        "invocations": [
+          {
+            "id": "principles",
+            "service": "split-principles"
+          }
+        ]
+      },
+      {
+        "id": "bundle",
+        "invocations": [
+          {
+            "id": "all",
+            "service": "bundle-principles"
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "from": "pipeline:input.principles",
+        "to": "split.principles.principles"
+      },
+      {
+        "from": "split.principles.documents",
+        "to": "bundle.all.documents"
+      },
+      {
+        "from": "bundle.all.bundle",
+        "to": "pipeline:output.bundle"
+      }
+    ]
+  },
+  "invalid_many_to_one_pipeline_payload": {
+    "id": "invalid-many-one-pipeline",
+    "inputs": [
+      {
+        "name": "principles",
+        "type": "markdown-document",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "bundle",
+        "type": "summary-json",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "steps": [
+      {
+        "id": "split",
+        "invocations": [
+          {
+            "id": "principles",
+            "service": "split-principles"
+          }
+        ]
+      },
+      {
+        "id": "bundle",
+        "invocations": [
+          {
+            "id": "single",
+            "service": "bundle-single-principle"
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "from": "pipeline:input.principles",
+        "to": "split.principles.principles"
+      },
+      {
+        "from": "split.principles.documents",
+        "to": "bundle.single.document"
+      },
+      {
+        "from": "bundle.single.bundle",
+        "to": "pipeline:output.bundle"
+      }
+    ]
+  },
+  "collision_registry_payload": {
+    "services": [
+      {
+        "id": "emit-collision-a",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Emit one markdown file named shared.md.",
+        "entrypoint": "docker://emit-collision-a",
+        "inputs": [
+          {
+            "name": "trigger",
+            "type": "markdown-document",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "documents",
+            "type": "markdown-document",
+            "mode": "file",
+            "cardinality": "many"
+          }
+        ]
+      },
+      {
+        "id": "emit-collision-b",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Emit one markdown file named shared.md.",
+        "entrypoint": "docker://emit-collision-b",
+        "inputs": [
+          {
+            "name": "trigger",
+            "type": "markdown-document",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "documents",
+            "type": "markdown-document",
+            "mode": "file",
+            "cardinality": "many"
+          }
+        ]
+      },
+      {
+        "id": "bundle-principles",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Bundle multiple markdown principle files.",
+        "entrypoint": "docker://bundle-principles",
+        "inputs": [
+          {
+            "name": "documents",
+            "type": "markdown-document",
+            "mode": "file",
+            "cardinality": "many"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "bundle",
+            "type": "summary-json",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ]
+      }
+    ]
+  },
+  "collision_pipeline_payload": {
+    "id": "collision-pipeline",
+    "inputs": [
+      {
+        "name": "trigger",
+        "type": "markdown-document",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "bundle",
+        "type": "summary-json",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "steps": [
+      {
+        "id": "emit",
+        "invocations": [
+          {
+            "id": "a",
+            "service": "emit-collision-a"
+          },
+          {
+            "id": "b",
+            "service": "emit-collision-b"
+          }
+        ]
+      },
+      {
+        "id": "bundle",
+        "invocations": [
+          {
+            "id": "all",
+            "service": "bundle-principles"
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "from": "pipeline:input.trigger",
+        "to": "emit.a.trigger"
+      },
+      {
+        "from": "pipeline:input.trigger",
+        "to": "emit.b.trigger"
+      },
+      {
+        "from": "emit.a.documents",
+        "to": "bundle.all.documents"
+      },
+      {
+        "from": "emit.b.documents",
+        "to": "bundle.all.documents"
+      },
+      {
+        "from": "bundle.all.bundle",
+        "to": "pipeline:output.bundle"
+      }
+    ]
+  },
+  "directory_collision_registry_payload": {
+    "services": [
+      {
+        "id": "emit-directory-collision-a",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Emit one directory containing docs/shared.md.",
+        "entrypoint": "docker://emit-directory-collision-a",
+        "inputs": [
+          {
+            "name": "trigger",
+            "type": "markdown-document",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "documents",
+            "type": "markdown-document-set",
+            "mode": "directory",
+            "cardinality": "one"
+          }
+        ]
+      },
+      {
+        "id": "emit-directory-collision-b",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Emit one directory containing docs/shared.md.",
+        "entrypoint": "docker://emit-directory-collision-b",
+        "inputs": [
+          {
+            "name": "trigger",
+            "type": "markdown-document",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "documents",
+            "type": "markdown-document-set",
+            "mode": "directory",
+            "cardinality": "one"
+          }
+        ]
+      },
+      {
+        "id": "bundle-directory-principles",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Bundle markdown files from one merged directory.",
+        "entrypoint": "docker://bundle-directory-principles",
+        "inputs": [
+          {
+            "name": "documents",
+            "type": "markdown-document-set",
+            "mode": "directory",
+            "cardinality": "many"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "bundle",
+            "type": "summary-json",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ]
+      }
+    ]
+  },
+  "directory_collision_pipeline_payload": {
+    "id": "directory-collision-pipeline",
+    "inputs": [
+      {
+        "name": "trigger",
+        "type": "markdown-document",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "bundle",
+        "type": "summary-json",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "steps": [
+      {
+        "id": "emit",
+        "invocations": [
+          {
+            "id": "a",
+            "service": "emit-directory-collision-a"
+          },
+          {
+            "id": "b",
+            "service": "emit-directory-collision-b"
+          }
+        ]
+      },
+      {
+        "id": "bundle",
+        "invocations": [
+          {
+            "id": "all",
+            "service": "bundle-directory-principles"
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "from": "pipeline:input.trigger",
+        "to": "emit.a.trigger"
+      },
+      {
+        "from": "pipeline:input.trigger",
+        "to": "emit.b.trigger"
+      },
+      {
+        "from": "emit.a.documents",
+        "to": "bundle.all.documents"
+      },
+      {
+        "from": "emit.b.documents",
+        "to": "bundle.all.documents"
+      },
+      {
+        "from": "bundle.all.bundle",
+        "to": "pipeline:output.bundle"
+      }
+    ]
+  }
+}

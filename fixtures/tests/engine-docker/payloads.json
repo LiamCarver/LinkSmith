@@ -1,0 +1,698 @@
+{
+  "simple_canvas_input": {
+    "nodes": [
+      {
+        "id": "group-one",
+        "type": "group",
+        "x": 0,
+        "y": 0,
+        "width": 200,
+        "height": 200,
+        "label": "Group"
+      },
+      {
+        "id": "node-one",
+        "type": "text",
+        "x": 10,
+        "y": 20,
+        "width": 100,
+        "height": 50,
+        "text": "Hello"
+      }
+    ],
+    "edges": []
+  },
+  "invalid_question_bundle_output": {
+    "questions": [
+      "not-an-object"
+    ]
+  },
+  "registry_payload": {
+    "services": [
+      {
+        "id": "obsidian-canvas-to-relationships",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Convert an Obsidian canvas file into relationships JSON.",
+        "entrypoint": "docker://obsidian-canvas-to-relationships",
+        "inputs": [
+          {
+            "name": "canvas",
+            "type": "obsidian-canvas",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "relationships",
+            "type": "canvas-relationships",
+            "mode": "file",
+            "cardinality": "one",
+            "schemaRef": "schemas/canvas-relationships.schema.json"
+          }
+        ]
+      }
+    ]
+  },
+  "pipeline_payload": {
+    "id": "canvas-normalize",
+    "inputs": [
+      {
+        "name": "canvas",
+        "type": "obsidian-canvas",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "relationships",
+        "type": "canvas-relationships",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "steps": [
+      {
+        "id": "normalize",
+        "invocations": [
+          {
+            "id": "canvas",
+            "service": "obsidian-canvas-to-relationships"
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "from": "pipeline:input.canvas",
+        "to": "normalize.canvas.canvas"
+      },
+      {
+        "from": "normalize.canvas.relationships",
+        "to": "pipeline:output.relationships"
+      }
+    ]
+  },
+  "runtime_payload": {
+    "runner": {
+      "kind": "docker",
+      "services": {
+        "obsidian-canvas-to-relationships": {
+          "image": "__IMAGE_TAG__",
+          "inputArguments": {
+            "canvas": "--input"
+          },
+          "outputDirArgument": "--output-dir",
+          "outputFileNameArguments": {
+            "relationships": "--output-file-name"
+          },
+          "outputFileNames": {
+            "relationships": "relationships.json"
+          },
+          "schemaBaseDirArgument": "--schema-base-dir",
+          "schemaBaseDirValue": "/app",
+          "inputMountRoot": "/data/inputs",
+          "outputMountRoot": "/data/output"
+        }
+      }
+    }
+  },
+  "renderer_registry_payload": {
+    "services": [
+      {
+        "id": "json-to-markdown-renderer",
+        "kind": "render",
+        "deterministic": true,
+        "description": "Render Markdown from JSON and a Mustache template.",
+        "entrypoint": "docker://json-to-markdown-renderer",
+        "inputs": [
+          {
+            "name": "data",
+            "type": "json-document",
+            "mode": "file",
+            "cardinality": "one"
+          },
+          {
+            "name": "template",
+            "type": "mustache-template",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "document",
+            "type": "markdown-document",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ]
+      }
+    ]
+  },
+  "renderer_pipeline_payload": {
+    "id": "render-basic-report",
+    "inputs": [
+      {
+        "name": "data",
+        "type": "json-document",
+        "mode": "file",
+        "cardinality": "one"
+      },
+      {
+        "name": "template",
+        "type": "mustache-template",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "document",
+        "type": "markdown-document",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "steps": [
+      {
+        "id": "render",
+        "invocations": [
+          {
+            "id": "report",
+            "service": "json-to-markdown-renderer"
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "from": "pipeline:input.data",
+        "to": "render.report.data"
+      },
+      {
+        "from": "pipeline:input.template",
+        "to": "render.report.template"
+      },
+      {
+        "from": "render.report.document",
+        "to": "pipeline:output.document"
+      }
+    ]
+  },
+  "renderer_runtime_payload": {
+    "runner": {
+      "kind": "docker",
+      "services": {
+        "json-to-markdown-renderer": {
+          "image": "__IMAGE_TAG__",
+          "inputArguments": {
+            "data": "--data",
+            "template": "--template"
+          },
+          "outputDirArgument": "--output-dir",
+          "outputFileNameArguments": {
+            "document": "--output-file-name"
+          },
+          "outputFileNames": {
+            "document": "document.md"
+          },
+          "inputMountRoot": "/data/inputs",
+          "outputMountRoot": "/data/output"
+        }
+      }
+    }
+  },
+  "canvas_markdown_registry_payload": {
+    "services": [
+      {
+        "id": "obsidian-canvas-to-relationships",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Convert an Obsidian canvas file into relationships JSON.",
+        "entrypoint": "docker://obsidian-canvas-to-relationships",
+        "inputs": [
+          {
+            "name": "canvas",
+            "type": "obsidian-canvas",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "relationships",
+            "type": "canvas-relationships",
+            "mode": "file",
+            "cardinality": "one",
+            "schemaRef": "schemas/canvas-relationships.schema.json"
+          }
+        ]
+      },
+      {
+        "id": "json-to-markdown-renderer",
+        "kind": "render",
+        "deterministic": true,
+        "description": "Render Markdown from relationships JSON and a Mustache template.",
+        "entrypoint": "docker://json-to-markdown-renderer",
+        "inputs": [
+          {
+            "name": "data",
+            "type": "canvas-relationships",
+            "mode": "file",
+            "cardinality": "one"
+          },
+          {
+            "name": "template",
+            "type": "mustache-template",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "document",
+            "type": "markdown-document",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ]
+      }
+    ]
+  },
+  "canvas_markdown_pipeline_payload": {
+    "id": "canvas-to-markdown",
+    "inputs": [
+      {
+        "name": "canvas",
+        "type": "obsidian-canvas",
+        "mode": "file",
+        "cardinality": "one"
+      },
+      {
+        "name": "template",
+        "type": "mustache-template",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "document",
+        "type": "markdown-document",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "steps": [
+      {
+        "id": "normalize",
+        "invocations": [
+          {
+            "id": "canvas",
+            "service": "obsidian-canvas-to-relationships"
+          }
+        ]
+      },
+      {
+        "id": "render",
+        "invocations": [
+          {
+            "id": "report",
+            "service": "json-to-markdown-renderer"
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "from": "pipeline:input.canvas",
+        "to": "normalize.canvas.canvas"
+      },
+      {
+        "from": "normalize.canvas.relationships",
+        "to": "render.report.data"
+      },
+      {
+        "from": "pipeline:input.template",
+        "to": "render.report.template"
+      },
+      {
+        "from": "render.report.document",
+        "to": "pipeline:output.document"
+      }
+    ]
+  },
+  "canvas_markdown_runtime_payload": {
+    "runner": {
+      "kind": "docker",
+      "services": {
+        "obsidian-canvas-to-relationships": {
+          "image": "__CANVAS_IMAGE_TAG__",
+          "inputArguments": {
+            "canvas": "--input"
+          },
+          "outputDirArgument": "--output-dir",
+          "outputFileNameArguments": {
+            "relationships": "--output-file-name"
+          },
+          "outputFileNames": {
+            "relationships": "relationships.json"
+          },
+          "schemaBaseDirArgument": "--schema-base-dir",
+          "schemaBaseDirValue": "/app",
+          "inputMountRoot": "/data/inputs",
+          "outputMountRoot": "/data/output"
+        },
+        "json-to-markdown-renderer": {
+          "image": "__RENDERER_IMAGE_TAG__",
+          "inputArguments": {
+            "data": "--data",
+            "template": "--template"
+          },
+          "outputDirArgument": "--output-dir",
+          "outputFileNameArguments": {
+            "document": "--output-file-name"
+          },
+          "outputFileNames": {
+            "document": "document.md"
+          },
+          "inputMountRoot": "/data/inputs",
+          "outputMountRoot": "/data/output"
+        }
+      }
+    }
+  },
+  "mixed_registry_payload": {
+    "services": [
+      {
+        "id": "obsidian-canvas-to-relationships",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Convert an Obsidian canvas file into relationships JSON.",
+        "entrypoint": "docker://obsidian-canvas-to-relationships",
+        "inputs": [
+          {
+            "name": "canvas",
+            "type": "obsidian-canvas",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "relationships",
+            "type": "canvas-relationships",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ]
+      },
+      {
+        "id": "build-question-bundle",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Build question bundle from relationships JSON.",
+        "entrypoint": "python://build-question-bundle",
+        "inputs": [
+          {
+            "name": "relationships",
+            "type": "canvas-relationships",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "question_bundle",
+            "type": "questions-json",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ]
+      }
+    ]
+  },
+  "mixed_pipeline_payload": {
+    "id": "canvas-question-bundle",
+    "inputs": [
+      {
+        "name": "canvas",
+        "type": "obsidian-canvas",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "question_bundle",
+        "type": "questions-json",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "steps": [
+      {
+        "id": "normalize",
+        "invocations": [
+          {
+            "id": "canvas",
+            "service": "obsidian-canvas-to-relationships"
+          }
+        ]
+      },
+      {
+        "id": "bundle",
+        "invocations": [
+          {
+            "id": "questions",
+            "service": "build-question-bundle"
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "from": "pipeline:input.canvas",
+        "to": "normalize.canvas.canvas"
+      },
+      {
+        "from": "normalize.canvas.relationships",
+        "to": "bundle.questions.relationships"
+      },
+      {
+        "from": "bundle.questions.question_bundle",
+        "to": "pipeline:output.question_bundle"
+      }
+    ]
+  },
+  "mixed_invalid_registry_payload": {
+    "services": [
+      {
+        "id": "obsidian-canvas-to-relationships",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Convert an Obsidian canvas file into relationships JSON.",
+        "entrypoint": "docker://obsidian-canvas-to-relationships",
+        "inputs": [
+          {
+            "name": "canvas",
+            "type": "obsidian-canvas",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "relationships",
+            "type": "canvas-relationships",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ]
+      },
+      {
+        "id": "build-invalid-question-bundle",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Emit invalid question bundle payload.",
+        "entrypoint": "python://build-invalid-question-bundle",
+        "inputs": [
+          {
+            "name": "relationships",
+            "type": "canvas-relationships",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "question_bundle",
+            "type": "questions-json",
+            "mode": "file",
+            "cardinality": "one",
+            "schemaRef": "__QUESTIONS_SCHEMA_PATH__"
+          }
+        ]
+      }
+    ]
+  },
+  "mixed_invalid_pipeline_payload": {
+    "id": "invalid-canvas-question-bundle",
+    "inputs": [
+      {
+        "name": "canvas",
+        "type": "obsidian-canvas",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "question_bundle",
+        "type": "questions-json",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "steps": [
+      {
+        "id": "normalize",
+        "invocations": [
+          {
+            "id": "canvas",
+            "service": "obsidian-canvas-to-relationships"
+          }
+        ]
+      },
+      {
+        "id": "bundle",
+        "invocations": [
+          {
+            "id": "questions",
+            "service": "build-invalid-question-bundle"
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "from": "pipeline:input.canvas",
+        "to": "normalize.canvas.canvas"
+      },
+      {
+        "from": "normalize.canvas.relationships",
+        "to": "bundle.questions.relationships"
+      },
+      {
+        "from": "bundle.questions.question_bundle",
+        "to": "pipeline:output.question_bundle"
+      }
+    ]
+  },
+  "mixed_failure_registry_payload": {
+    "services": [
+      {
+        "id": "obsidian-canvas-to-relationships",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Convert an Obsidian canvas file into relationships JSON.",
+        "entrypoint": "docker://obsidian-canvas-to-relationships",
+        "inputs": [
+          {
+            "name": "canvas",
+            "type": "obsidian-canvas",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "relationships",
+            "type": "canvas-relationships",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ]
+      },
+      {
+        "id": "build-failing-question-bundle",
+        "kind": "transform",
+        "deterministic": true,
+        "description": "Raise failure after upstream docker success.",
+        "entrypoint": "python://build-failing-question-bundle",
+        "inputs": [
+          {
+            "name": "relationships",
+            "type": "canvas-relationships",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ],
+        "outputs": [
+          {
+            "name": "question_bundle",
+            "type": "questions-json",
+            "mode": "file",
+            "cardinality": "one"
+          }
+        ]
+      }
+    ]
+  },
+  "mixed_failure_pipeline_payload": {
+    "id": "failing-canvas-question-bundle",
+    "inputs": [
+      {
+        "name": "canvas",
+        "type": "obsidian-canvas",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "question_bundle",
+        "type": "questions-json",
+        "mode": "file",
+        "cardinality": "one"
+      }
+    ],
+    "steps": [
+      {
+        "id": "normalize",
+        "invocations": [
+          {
+            "id": "canvas",
+            "service": "obsidian-canvas-to-relationships"
+          }
+        ]
+      },
+      {
+        "id": "bundle",
+        "invocations": [
+          {
+            "id": "questions",
+            "service": "build-failing-question-bundle"
+          }
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "from": "pipeline:input.canvas",
+        "to": "normalize.canvas.canvas"
+      },
+      {
+        "from": "normalize.canvas.relationships",
+        "to": "bundle.questions.relationships"
+      },
+      {
+        "from": "bundle.questions.question_bundle",
+        "to": "pipeline:output.question_bundle"
+      }
+    ]
+  }
+}

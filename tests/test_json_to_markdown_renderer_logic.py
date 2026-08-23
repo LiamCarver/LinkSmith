@@ -6,6 +6,11 @@ from pathlib import Path
 
 from linksmith_core.errors import ConfigurationError
 from linksmith_services.json_to_markdown_renderer import render_markdown_document
+from tests.json_fixtures import load_fixture_json
+
+
+def _logic_payload(name: str):
+    return load_fixture_json("json-to-markdown-renderer-logic/payloads.json", key=name)
 
 
 class JsonToMarkdownRendererLogicTests(unittest.TestCase):
@@ -24,14 +29,14 @@ class JsonToMarkdownRendererLogicTests(unittest.TestCase):
         self.assertEqual(actual, expected)
 
     def test_render_rejects_missing_template_key(self) -> None:
-        payload = {"title": "Only Title"}
+        payload = _logic_payload("only_title")
         template = "# {{title}}\n\n{{summary}}\n"
 
         with self.assertRaisesRegex(ConfigurationError, "missing key 'summary'"):
             render_markdown_document(payload, template)
 
     def test_render_allows_inverted_section_for_absent_key(self) -> None:
-        payload = {"title": "Only Title"}
+        payload = _logic_payload("only_title")
         template = "# {{title}}\n\n{{^summary}}No summary{{/summary}}\n"
 
         actual = render_markdown_document(payload, template)
@@ -39,7 +44,7 @@ class JsonToMarkdownRendererLogicTests(unittest.TestCase):
         self.assertEqual(actual, "# Only Title\n\nNo summary\n")
 
     def test_render_allows_falsey_section_value_without_descending(self) -> None:
-        payload = {"title": "Only Title", "owner": None}
+        payload = _logic_payload("only_title_owner_null")
         template = "# {{title}}\n{{#owner}}{{name}}{{/owner}}"
 
         actual = render_markdown_document(payload, template)
@@ -47,7 +52,7 @@ class JsonToMarkdownRendererLogicTests(unittest.TestCase):
         self.assertEqual(actual, "# Only Title\n")
 
     def test_render_allows_truthy_scalar_section_value(self) -> None:
-        payload = {"title": "Only Title", "show_title": True}
+        payload = _logic_payload("only_title_show_title")
         template = "{{#show_title}}{{title}}{{/show_title}}"
 
         actual = render_markdown_document(payload, template)
