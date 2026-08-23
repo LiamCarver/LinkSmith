@@ -45,7 +45,7 @@
       "invocations": [
         {
           "id": "canvas",
-          "service": "json-to-json-llm-transformer",
+          "service": "canvas-relationships-to-summary-json",
           "resources": [
             {
               "name": "prompt",

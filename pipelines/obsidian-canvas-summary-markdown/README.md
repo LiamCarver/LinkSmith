@@ -28,6 +28,14 @@ Files in this folder:
 - `resources/summary-report.template.mustache`
   Fixed Mustache template resource bound to the Markdown renderer invocation.
 
+## Local Registry Note
+
+This pipeline keeps the generic `json-to-json-llm-transformer` contract stable by using a pipeline-local service id:
+
+- `canvas-relationships-to-summary-json`
+
+That local id points at the same shared transformer runtime image, but declares the narrower `canvas-relationships` input contract required by this specific workflow.
+
 ## External Run-Time Input
 
 This pipeline expects one external run-time input:

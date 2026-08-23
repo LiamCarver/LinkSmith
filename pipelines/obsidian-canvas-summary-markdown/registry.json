@@ -25,11 +25,11 @@
       ]
     },
     {
-      "id": "json-to-json-llm-transformer",
+      "id": "canvas-relationships-to-summary-json",
       "kind": "transform",
       "deterministic": false,
-      "description": "Transform JSON into JSON through an OpenAI-compatible chat-completions API.",
-      "entrypoint": "docker://json-to-json-llm-transformer",
+      "description": "Summarize canvas-relationships JSON into structured summary JSON through the shared LLM transformer runtime.",
+      "entrypoint": "docker://canvas-relationships-to-summary-json",
       "inputs": [
         {
           "name": "data",

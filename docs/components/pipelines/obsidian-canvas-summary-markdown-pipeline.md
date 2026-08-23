@@ -87,6 +87,10 @@ The pipeline should use these existing services:
   - input: `template`
   - output: `document`
 
+Implementation note:
+
+- the real pipeline may use a pipeline-local registry alias for the LLM step so the shared generic `json-to-json-llm-transformer` contract does not drift across workflows
+
 ## Summary Output Shape
 
 The initial schema should stay small and easy for the model to satisfy.

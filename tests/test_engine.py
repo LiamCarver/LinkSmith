@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -14,6 +15,7 @@ from linksmith_engine.registry_loader import load_registry_document
 from linksmith_engine.runtime_loader import load_runtime_config, load_service_runner
 from linksmith_engine.service_runner import DockerServiceConfig, DockerServiceRunner, ServiceRunnerRequest, ServiceRunnerResult
 from linksmith_core.models import PortContract
+from linksmith_services.obsidian_canvas_to_relationships import convert_canvas_document
 from linksmith_services.json_to_markdown_renderer import render_markdown_document
 from linksmith_engine.validator import validate_pipeline_semantics
 from tests.json_fixtures import load_fixture_json
@@ -30,7 +32,11 @@ class FakeServiceRunner:
             output_file = request.output_root / "relationships" / "relationships.json"
             output_file.parent.mkdir(parents=True, exist_ok=True)
             output_file.write_text(
-                json.dumps(_engine_payload("empty_relationships_output")),
+                json.dumps(
+                    convert_canvas_document(
+                        json.loads(request.inputs["canvas"][0].read_text(encoding="utf-8"))
+                    )
+                ),
                 encoding="utf-8",
             )
             outputs = {"relationships": (output_file,)}
@@ -150,7 +156,7 @@ class FakeServiceRunner:
                 encoding="utf-8",
             )
             outputs = {"document": (output_file,)}
-        elif request.service_id == "json-to-json-llm-transformer":
+        elif request.service_id in {"json-to-json-llm-transformer", "canvas-relationships-to-summary-json"}:
             data = json.loads(request.inputs["data"][0].read_text(encoding="utf-8"))
             prompt = request.inputs["prompt"][0].read_text(encoding="utf-8")
             schema = json.loads(request.inputs["schema"][0].read_text(encoding="utf-8"))
@@ -160,15 +166,24 @@ class FakeServiceRunner:
                 raise AssertionError("Expected JSON schema object resource.")
             output_file = request.output_root / "result" / "result.json"
             output_file.parent.mkdir(parents=True, exist_ok=True)
-            output_file.write_text(
-                json.dumps(
-                    {
-                        "title": data["title_source"],
-                        "bullets": data["bullet_sources"],
-                    }
-                ),
-                encoding="utf-8",
-            )
+            if request.service_id == "canvas-relationships-to-summary-json":
+                output_payload = {
+                    "title": "Canvas Summary",
+                    "overview": "The canvas highlights delivery risks, planned actions, and one external context note.",
+                    "group_count": len(data["groups"]),
+                    "ungrouped_node_count": len(data["ungroupedNodes"]),
+                    "key_points": [
+                        "Two nested groups organize risks and actions.",
+                        "One outside context node links into the risk space.",
+                        "Action nodes respond directly to the identified risks.",
+                    ],
+                }
+            else:
+                output_payload = {
+                    "title": data["title_source"],
+                    "bullets": data["bullet_sources"],
+                }
+            output_file.write_text(json.dumps(output_payload), encoding="utf-8")
             outputs = {"result": (output_file,)}
         else:
             raise AssertionError(f"Unexpected fake service id: {request.service_id}")
@@ -410,6 +425,38 @@ class EngineTests(unittest.TestCase):
                 json.loads(output_file.read_text(encoding="utf-8")),
                 _engine_payload("resource_bound_llm_expected_output"),
             )
+
+    def test_run_pipeline_executes_real_canvas_summary_pipeline_artifacts(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        pipeline_root = repo_root / "pipelines" / "obsidian-canvas-summary-markdown"
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_root = Path(temp_dir) / "runs"
+
+            result = run_pipeline(
+                PipelineRunRequest(
+                    pipeline_path=pipeline_root / "pipeline.json",
+                    registry_path=pipeline_root / "registry.json",
+                    pipeline_inputs={
+                        "canvas": pipeline_root / "examples" / "input" / "sample.canvas",
+                    },
+                    run_root=run_root,
+                    service_runner=FakeServiceRunner(),
+                    run_id="real-pipeline-001",
+                    validate_schema=True,
+                    validate_outputs=True,
+                )
+            )
+
+            summary_payload = json.loads(result.outputs["summary"][0].read_text(encoding="utf-8"))
+            document_text = result.outputs["document"][0].read_text(encoding="utf-8")
+
+            self.assertEqual(summary_payload["title"], "Canvas Summary")
+            self.assertEqual(summary_payload["group_count"], 1)
+            self.assertEqual(summary_payload["ungrouped_node_count"], 1)
+            self.assertIn("# Canvas Summary", document_text)
+            self.assertIn("- Groups: 1", document_text)
+            self.assertIn("- Ungrouped nodes: 1", document_text)
 
     def test_run_pipeline_rejects_invalid_json_output_against_declared_schema(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -695,6 +742,70 @@ class EngineTests(unittest.TestCase):
                 command,
             )
             self.assertIn("LINKSMITH_LLM_MODEL=local-model", command)
+
+    def test_docker_service_runner_resolves_relative_bind_mounts_to_absolute_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            original_cwd = Path.cwd()
+            os.chdir(root)
+            try:
+                input_file = Path("input.json")
+                output_root = Path("outputs")
+                log_path = Path("runner.log")
+                input_file.write_text("{}", encoding="utf-8")
+
+                request = ServiceRunnerRequest(
+                    step_id="transform",
+                    invocation_id="summary",
+                    service_id="json-to-json-llm-transformer",
+                    inputs={"data": (input_file,)},
+                    input_contracts={
+                        "data": PortContract(
+                            name="data",
+                            type="json-document",
+                            mode="file",
+                            cardinality="one",
+                        )
+                    },
+                    output_contracts={
+                        "result": PortContract(
+                            name="result",
+                            type="json-document",
+                            mode="file",
+                            cardinality="one",
+                        )
+                    },
+                    output_root=output_root,
+                    config={},
+                    log_path=log_path,
+                )
+                runner = DockerServiceRunner(
+                    {
+                        "json-to-json-llm-transformer": DockerServiceConfig(
+                            image="example-image:latest",
+                            input_arguments={"data": "--data"},
+                            output_dir_argument="--output-dir",
+                            output_file_name_arguments={"result": "--output-file-name"},
+                            output_file_names={"result": "result.json"},
+                            input_mount_root="/data/inputs",
+                            output_mount_root="/data/output",
+                        )
+                    }
+                )
+
+                with patch("linksmith_engine.service_runner.which", return_value="docker"), patch(
+                    "linksmith_engine.service_runner.subprocess.run"
+                ) as mocked_run:
+                    mocked_run.return_value.returncode = 0
+                    mocked_run.return_value.stdout = "ok"
+
+                    runner.run(request)
+
+                command = mocked_run.call_args.args[0]
+                self.assertIn(f"{input_file.resolve()}:/data/inputs/data/{input_file.name}:ro", command)
+                self.assertIn(f"{output_root.resolve()}:/data/output", command)
+            finally:
+                os.chdir(original_cwd)
 
     def test_run_pipeline_writes_failed_manifests_for_downstream_failure(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

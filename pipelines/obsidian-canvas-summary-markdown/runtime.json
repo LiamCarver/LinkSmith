@@ -19,7 +19,7 @@
         "inputMountRoot": "/data/inputs",
         "outputMountRoot": "/data/output"
       },
-      "json-to-json-llm-transformer": {
+      "canvas-relationships-to-summary-json": {
         "image": "linksmith-json-to-json-llm-transformer:engine-live-test",
         "inputArguments": {
           "data": "--data",
