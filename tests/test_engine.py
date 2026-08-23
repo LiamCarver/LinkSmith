@@ -243,8 +243,43 @@ class EngineTests(unittest.TestCase):
                 json.loads(output_file.read_text(encoding="utf-8")),
                 _engine_payload("empty_relationships_output"),
             )
+            self.assertEqual(
+                result.run_paths.root,
+                root / "runs" / result.pipeline.pipeline_id / "run-001",
+            )
             self.assertTrue(result.run_paths.run_manifest_file.exists())
             self.assertEqual(len(result.invocation_manifests), 1)
+
+    def test_run_pipeline_defaults_run_id_to_timestamp_under_pipeline_folder(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            registry_path = root / "registry.json"
+            pipeline_path = root / "pipeline.json"
+            input_canvas = root / "input.canvas"
+            registry_path.write_text(json.dumps(_registry_payload()), encoding="utf-8")
+            pipeline_path.write_text(json.dumps(_pipeline_payload()), encoding="utf-8")
+            input_canvas.write_text(json.dumps(_engine_payload("empty_canvas_input")), encoding="utf-8")
+
+            with patch("linksmith_engine.engine.datetime") as mocked_datetime:
+                mocked_datetime.now.return_value.strftime.return_value = "2026-08-23_14-05-17"
+
+                result = run_pipeline(
+                    PipelineRunRequest(
+                        pipeline_path=pipeline_path,
+                        registry_path=registry_path,
+                        pipeline_inputs={"canvas": input_canvas},
+                        run_root=root / "runs",
+                        service_runner=FakeServiceRunner(),
+                        validate_schema=False,
+                    )
+                )
+
+            self.assertEqual(result.run_paths.run_id, "2026-08-23_14-05-17")
+            self.assertEqual(
+                result.run_paths.root,
+                root / "runs" / result.pipeline.pipeline_id / "2026-08-23_14-05-17",
+            )
+            self.assertTrue(result.run_paths.run_manifest_file.exists())
 
     def test_load_runtime_config_resolves_docker_service_runner(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -835,21 +870,22 @@ class EngineTests(unittest.TestCase):
                     )
                 )
 
-            run_manifest = json.loads((root / "runs" / "run-failure-001" / "manifests" / "run.json").read_text(encoding="utf-8"))
+            run_root = root / "runs" / _failing_pipeline_payload()["id"] / "run-failure-001"
+            run_manifest = json.loads((run_root / "manifests" / "run.json").read_text(encoding="utf-8"))
             self.assertEqual(run_manifest["status"], "failed")
             self.assertIn("simulated downstream failure", run_manifest["error"])
             self.assertEqual(run_manifest["outputs"], {})
             self.assertEqual(len(run_manifest["invocationManifests"]), 3)
 
             upstream_manifest = json.loads(
-                (root / "runs" / "run-failure-001" / "manifests" / "invocations" / "summaries.principles.json").read_text(
+                (run_root / "manifests" / "invocations" / "summaries.principles.json").read_text(
                     encoding="utf-8"
                 )
             )
             self.assertEqual(upstream_manifest["status"], "succeeded")
 
             failed_manifest = json.loads(
-                (root / "runs" / "run-failure-001" / "manifests" / "invocations" / "questioning.combine.json").read_text(
+                (run_root / "manifests" / "invocations" / "questioning.combine.json").read_text(
                     encoding="utf-8"
                 )
             )

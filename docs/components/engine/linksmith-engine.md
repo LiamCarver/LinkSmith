@@ -196,10 +196,10 @@ Responsibilities:
 
 The engine currently materializes each pipeline run into a deterministic host folder.
 
-Suggested v1 layout:
+Updated v1 layout:
 
 ```text
-runs/<run-id>/
+runs/<pipeline-id>/<run-id>/
   pipeline/
     pipeline.json
     registry.json
@@ -233,10 +233,17 @@ Purpose of the layout:
 - `manifests/`
   records what was planned, run, and produced
 
+Layout notes:
+
+- `<pipeline-id>` should come from the loaded pipeline definition rather than from caller convention.
+- `<run-id>` should be a filesystem-safe timestamp by default, for example `2026-08-23_14-05-17`.
+- callers may still override `run_id` explicitly when deterministic test naming or replay naming matters.
+
 Current note:
 
 - `pipeline/` currently stores copies of `pipeline.json` and `registry.json`
 - invocation inputs are copied into run-local staging folders rather than mounted from original source locations
+- the implemented code still uses `runs/<run-id>/` and should be updated to the nested pipeline-first shape
 
 ## Invocation Contract
 
@@ -269,7 +276,7 @@ At a high level, the engine should follow this flow:
 1. read pipeline and registry JSON
 2. validate both structures
 3. run semantic pipeline validation against registry contracts
-4. create the host run layout
+4. create the host run layout under `runs/<pipeline-id>/<run-id>/`
 5. materialize pipeline input artifacts into the run
 6. resolve invocation-scoped resource artifacts
 7. determine which invocations are initially ready
@@ -368,11 +375,11 @@ Example shape:
   "service": "obsidian-canvas-to-relationships",
   "status": "succeeded",
   "inputs": {
-    "canvas": ["runs/run-001/inputs/team.canvas"]
+    "canvas": ["runs/obsidian-canvas-summary-markdown/2026-08-23_14-05-17/inputs/team.canvas"]
   },
   "outputs": {
     "relationships": [
-      "runs/run-001/invocation-artifacts/normalize/canvas/outputs/relationships/relationships.json"
+      "runs/obsidian-canvas-summary-markdown/2026-08-23_14-05-17/invocation-artifacts/normalize/canvas/outputs/relationships/relationships.json"
     ]
   },
   "exitCode": 0
@@ -386,3 +393,12 @@ Example shape:
 - Should retries be declared in the pipeline spec, registry, or a separate run policy?
 - Do we want engine support for parallel ready invocations in v1, or strictly sequential execution first?
 - Should the Docker runner read image/tag details from the registry entry directly, or from a separate runtime config mapping?
+
+## Next Intended Slice
+
+The next engine slice should update the implemented layout to:
+
+- derive the pipeline folder from `pipeline.pipeline_id`
+- default `run_id` to a timestamp rather than a UUID fragment when the caller does not supply one
+- keep explicit caller-supplied `run_id` support for tests and repeatable examples
+- rerun the existing real pipeline after the layout change to confirm output placement still works

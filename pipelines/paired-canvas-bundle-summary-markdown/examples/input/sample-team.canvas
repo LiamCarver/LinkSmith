@@ -1,0 +1,93 @@
+{
+  "nodes": [
+    {
+      "id": "group-team",
+      "type": "group",
+      "x": 0,
+      "y": 0,
+      "width": 420,
+      "height": 260,
+      "label": "Delivery Team"
+    },
+    {
+      "id": "group-risks",
+      "type": "group",
+      "x": 20,
+      "y": 40,
+      "width": 180,
+      "height": 180,
+      "label": "Risks"
+    },
+    {
+      "id": "group-actions",
+      "type": "group",
+      "x": 220,
+      "y": 40,
+      "width": 180,
+      "height": 180,
+      "label": "Actions"
+    },
+    {
+      "id": "node-risk-roles",
+      "type": "text",
+      "x": 40,
+      "y": 70,
+      "width": 120,
+      "height": 40,
+      "text": "Roles overlap"
+    },
+    {
+      "id": "node-risk-escalation",
+      "type": "text",
+      "x": 40,
+      "y": 130,
+      "width": 130,
+      "height": 40,
+      "text": "Escalations unclear"
+    },
+    {
+      "id": "node-action-clarity",
+      "type": "text",
+      "x": 240,
+      "y": 70,
+      "width": 130,
+      "height": 40,
+      "text": "Clarify ownership"
+    },
+    {
+      "id": "node-action-rhythm",
+      "type": "text",
+      "x": 240,
+      "y": 130,
+      "width": 130,
+      "height": 40,
+      "text": "Weekly review rhythm"
+    },
+    {
+      "id": "node-context",
+      "type": "text",
+      "x": 470,
+      "y": 80,
+      "width": 140,
+      "height": 40,
+      "text": "Client migration phase"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "fromNode": "node-risk-roles",
+      "toNode": "node-action-clarity"
+    },
+    {
+      "id": "edge-2",
+      "fromNode": "node-risk-escalation",
+      "toNode": "node-action-rhythm"
+    },
+    {
+      "id": "edge-3",
+      "fromNode": "node-context",
+      "toNode": "node-risk-escalation"
+    }
+  ]
+}

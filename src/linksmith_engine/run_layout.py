@@ -6,8 +6,14 @@ from pathlib import Path
 from .models import RunPaths
 
 
-def create_run_layout(run_root: Path, run_id: str, pipeline_path: Path, registry_path: Path) -> RunPaths:
-    root = run_root / run_id
+def create_run_layout(
+    run_root: Path,
+    pipeline_id: str,
+    run_id: str,
+    pipeline_path: Path,
+    registry_path: Path,
+) -> RunPaths:
+    root = run_root / pipeline_id / run_id
     pipeline_dir = root / "pipeline"
     inputs_dir = root / "inputs"
     invocation_artifacts_dir = root / "invocation-artifacts"

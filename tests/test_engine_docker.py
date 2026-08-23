@@ -436,21 +436,22 @@ class EngineDockerTests(unittest.TestCase):
                     )
                 )
 
-            run_manifest = json.loads((root / "runs" / "run-004" / "manifests" / "run.json").read_text(encoding="utf-8"))
+            run_root = root / "runs" / _mixed_failure_pipeline_payload()["id"] / "run-004"
+            run_manifest = json.loads((run_root / "manifests" / "run.json").read_text(encoding="utf-8"))
             self.assertEqual(run_manifest["status"], "failed")
             self.assertIn("simulated mixed downstream failure", run_manifest["error"])
             self.assertEqual(run_manifest["outputs"], {})
             self.assertEqual(len(run_manifest["invocationManifests"]), 2)
 
             upstream_manifest = json.loads(
-                (root / "runs" / "run-004" / "manifests" / "invocations" / "normalize.canvas.json").read_text(
+                (run_root / "manifests" / "invocations" / "normalize.canvas.json").read_text(
                     encoding="utf-8"
                 )
             )
             self.assertEqual(upstream_manifest["status"], "succeeded")
 
             failed_manifest = json.loads(
-                (root / "runs" / "run-004" / "manifests" / "invocations" / "bundle.questions.json").read_text(
+                (run_root / "manifests" / "invocations" / "bundle.questions.json").read_text(
                     encoding="utf-8"
                 )
             )

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime
 import json
 import shutil
-import uuid
 from pathlib import Path
 from typing import Mapping
 
@@ -44,7 +44,7 @@ class PipelineRunRequest:
         self.pipeline_inputs = dict(pipeline_inputs)
         self.run_root = run_root
         self.service_runner = service_runner
-        self.run_id = run_id or f"run-{uuid.uuid4().hex[:8]}"
+        self.run_id = run_id
         self.validate_schema = validate_schema
         self.validate_outputs = validate_outputs
 
@@ -77,7 +77,14 @@ def run_pipeline(request: PipelineRunRequest) -> PipelineRunResult:
         schema_base_dir=schema_base_dir,
     )
     validate_pipeline_semantics(pipeline, registry)
-    run_paths = create_run_layout(request.run_root, request.run_id, request.pipeline_path, request.registry_path)
+    run_id = request.run_id or _default_run_id()
+    run_paths = create_run_layout(
+        request.run_root,
+        pipeline.pipeline_id,
+        run_id,
+        request.pipeline_path,
+        request.registry_path,
+    )
     pipeline_input_artifacts = _materialize_pipeline_inputs(run_paths, pipeline, request.pipeline_inputs)
 
     service_index = {service.service_id: service for service in registry.services}
@@ -521,3 +528,7 @@ def _write_failed_invocation_manifest(
     manifest_path = run_paths.invocation_manifest_file(step_id, invocation_id)
     write_invocation_manifest(manifest_path, manifest)
     return manifest_path
+
+
+def _default_run_id() -> str:
+    return datetime.now().strftime("%Y-%m-%d_%H-%M-%S")

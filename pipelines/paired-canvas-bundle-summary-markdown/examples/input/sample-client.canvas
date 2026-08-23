@@ -1,0 +1,93 @@
+{
+  "nodes": [
+    {
+      "id": "group-client",
+      "type": "group",
+      "x": 0,
+      "y": 0,
+      "width": 430,
+      "height": 280,
+      "label": "Client Delivery Context"
+    },
+    {
+      "id": "group-problems",
+      "type": "group",
+      "x": 20,
+      "y": 40,
+      "width": 180,
+      "height": 190,
+      "label": "Problems"
+    },
+    {
+      "id": "group-opportunities",
+      "type": "group",
+      "x": 220,
+      "y": 40,
+      "width": 180,
+      "height": 190,
+      "label": "Opportunities"
+    },
+    {
+      "id": "node-problem-priorities",
+      "type": "text",
+      "x": 40,
+      "y": 70,
+      "width": 130,
+      "height": 40,
+      "text": "Priorities shift weekly"
+    },
+    {
+      "id": "node-problem-handoffs",
+      "type": "text",
+      "x": 40,
+      "y": 135,
+      "width": 130,
+      "height": 40,
+      "text": "Handoffs are inconsistent"
+    },
+    {
+      "id": "node-opportunity-triage",
+      "type": "text",
+      "x": 240,
+      "y": 70,
+      "width": 130,
+      "height": 40,
+      "text": "Shared triage board"
+    },
+    {
+      "id": "node-opportunity-routines",
+      "type": "text",
+      "x": 240,
+      "y": 135,
+      "width": 130,
+      "height": 40,
+      "text": "Decision routine with client"
+    },
+    {
+      "id": "node-driver",
+      "type": "text",
+      "x": 470,
+      "y": 110,
+      "width": 150,
+      "height": 40,
+      "text": "Programme deadline in 6 weeks"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "fromNode": "node-driver",
+      "toNode": "node-problem-priorities"
+    },
+    {
+      "id": "edge-2",
+      "fromNode": "node-problem-priorities",
+      "toNode": "node-opportunity-triage"
+    },
+    {
+      "id": "edge-3",
+      "fromNode": "node-problem-handoffs",
+      "toNode": "node-opportunity-routines"
+    }
+  ]
+}
