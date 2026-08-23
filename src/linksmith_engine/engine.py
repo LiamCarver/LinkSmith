@@ -65,15 +65,16 @@ class PipelineRunResult:
 
 
 def run_pipeline(request: PipelineRunRequest) -> PipelineRunResult:
+    schema_base_dir = Path(__file__).resolve().parents[2] if request.validate_schema else None
     registry = load_registry_document(
         request.registry_path,
         validate_schema=request.validate_schema,
-        schema_base_dir=request.registry_path.parent.parent if request.validate_schema else None,
+        schema_base_dir=schema_base_dir,
     )
     pipeline = load_pipeline_definition(
         request.pipeline_path,
         validate_schema=request.validate_schema,
-        schema_base_dir=request.pipeline_path.parent.parent if request.validate_schema else None,
+        schema_base_dir=schema_base_dir,
     )
     validate_pipeline_semantics(pipeline, registry)
     run_paths = create_run_layout(request.run_root, request.run_id, request.pipeline_path, request.registry_path)

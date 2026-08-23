@@ -63,7 +63,7 @@ class DockerServiceRunner:
 
         command: list[str] = ["docker", "run", "--rm"]
         service_arguments: list[str] = []
-        output_root_host = request.output_root
+        output_root_host = request.output_root.resolve()
         output_root_host.mkdir(parents=True, exist_ok=True)
         command.extend(["-v", f"{output_root_host}:{service_config.output_mount_root}"])
         for name, value in service_config.environment.items():
@@ -89,7 +89,7 @@ class DockerServiceRunner:
                         raise ServiceRunnerError(
                             f"Docker runner currently expects one prepared file for input port '{port_name}'."
                         )
-                    host_path = input_paths[0]
+                    host_path = input_paths[0].resolve()
                     container_path = f"{service_config.input_mount_root}/{port_name}/{host_path.name}"
                     command.extend(["-v", f"{host_path}:{container_path}:ro"])
                     service_arguments.extend([argument_name, container_path])
@@ -98,7 +98,7 @@ class DockerServiceRunner:
                     raise ServiceRunnerError(
                         f"Docker runner currently expects one prepared directory for input port '{port_name}'."
                     )
-                host_path = input_paths[0]
+                host_path = input_paths[0].resolve()
                 container_path = f"{service_config.input_mount_root}/{port_name}"
                 command.extend(["-v", f"{host_path}:{container_path}:ro"])
                 service_arguments.extend([argument_name, container_path])
@@ -157,4 +157,4 @@ def _resolve_many_file_input_root(service_id: str, port_name: str, input_paths: 
         raise ServiceRunnerError(
             f"Prepared many-file input port '{port_name}' for service '{service_id}' must share one directory."
         )
-    return next(iter(parent_roots))
+    return next(iter(parent_roots)).resolve()
