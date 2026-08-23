@@ -1,0 +1,37 @@
+{
+  "type": "object",
+  "required": [
+    "title",
+    "overview",
+    "group_count",
+    "ungrouped_node_count",
+    "key_points"
+  ],
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "overview": {
+      "type": "string",
+      "minLength": 1
+    },
+    "group_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "ungrouped_node_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "key_points": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "additionalProperties": false
+}
