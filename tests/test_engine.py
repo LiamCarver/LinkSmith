@@ -216,6 +216,47 @@ class EngineTests(unittest.TestCase):
             self.assertEqual(config.input_arguments["canvas"], "--input")
             self.assertEqual(config.output_file_names["relationships"], "relationships.json")
 
+    def test_load_runtime_config_preserves_service_environment_variables(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            runtime_config_path = root / "runtime.json"
+            runtime_config_path.write_text(
+                json.dumps(
+                    {
+                        "runner": {
+                            "kind": "docker",
+                            "services": {
+                                "json-to-json-llm-transformer": {
+                                    "image": "linksmith-json-to-json-llm-transformer:test",
+                                    "inputArguments": {
+                                        "data": "--data",
+                                        "prompt": "--prompt",
+                                        "schema": "--schema",
+                                    },
+                                    "outputDirArgument": "--output-dir",
+                                    "environment": {
+                                        "LINKSMITH_LLM_BASE_URL": "http://host.docker.internal:1234/v1",
+                                        "LINKSMITH_LLM_MODEL": "local-model",
+                                    },
+                                }
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            runtime_config = load_runtime_config(runtime_config_path, validate_schema=False)
+            runner = load_service_runner(runtime_config)
+
+            self.assertIsInstance(runner, DockerServiceRunner)
+            config = runner._service_configs["json-to-json-llm-transformer"]
+            self.assertEqual(
+                config.environment["LINKSMITH_LLM_BASE_URL"],
+                "http://host.docker.internal:1234/v1",
+            )
+            self.assertEqual(config.environment["LINKSMITH_LLM_MODEL"], "local-model")
+
     def test_run_pipeline_routes_multiple_invocations_into_downstream_service(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -466,6 +507,73 @@ class EngineTests(unittest.TestCase):
             self.assertIn(f"{input_root}:/data/inputs/documents:ro", command)
             self.assertIn("--documents", command)
             self.assertIn("/data/inputs/documents", command)
+
+    def test_docker_service_runner_injects_environment_variables(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            input_file = root / "input.json"
+            output_root = root / "outputs"
+            log_path = root / "runner.log"
+            input_file.write_text("{}", encoding="utf-8")
+
+            request = ServiceRunnerRequest(
+                step_id="transform",
+                invocation_id="summary",
+                service_id="json-to-json-llm-transformer",
+                inputs={"data": (input_file,)},
+                input_contracts={
+                    "data": PortContract(
+                        name="data",
+                        type="json-document",
+                        mode="file",
+                        cardinality="one",
+                    )
+                },
+                output_contracts={
+                    "result": PortContract(
+                        name="result",
+                        type="json-document",
+                        mode="file",
+                        cardinality="one",
+                    )
+                },
+                output_root=output_root,
+                config={},
+                log_path=log_path,
+            )
+            runner = DockerServiceRunner(
+                {
+                    "json-to-json-llm-transformer": DockerServiceConfig(
+                        image="example-image:latest",
+                        input_arguments={"data": "--data"},
+                        output_dir_argument="--output-dir",
+                        output_file_name_arguments={"result": "--output-file-name"},
+                        output_file_names={"result": "result.json"},
+                        input_mount_root="/data/inputs",
+                        output_mount_root="/data/output",
+                        environment={
+                            "LINKSMITH_LLM_BASE_URL": "http://host.docker.internal:1234/v1",
+                            "LINKSMITH_LLM_MODEL": "local-model",
+                        },
+                    )
+                }
+            )
+
+            with patch("linksmith_engine.service_runner.which", return_value="docker"), patch(
+                "linksmith_engine.service_runner.subprocess.run"
+            ) as mocked_run:
+                mocked_run.return_value.returncode = 0
+                mocked_run.return_value.stdout = "ok"
+
+                runner.run(request)
+
+            command = mocked_run.call_args.args[0]
+            self.assertIn("-e", command)
+            self.assertIn(
+                "LINKSMITH_LLM_BASE_URL=http://host.docker.internal:1234/v1",
+                command,
+            )
+            self.assertIn("LINKSMITH_LLM_MODEL=local-model", command)
 
     def test_run_pipeline_writes_failed_manifests_for_downstream_failure(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

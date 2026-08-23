@@ -29,6 +29,7 @@ class DockerRuntimeServiceDefinition:
     image: str
     input_arguments: dict[str, str]
     output_dir_argument: str
+    environment: dict[str, str] = field(default_factory=dict)
     output_file_name_arguments: dict[str, str] = field(default_factory=dict)
     output_file_names: dict[str, str] = field(default_factory=dict)
     schema_base_dir_argument: str | None = None
