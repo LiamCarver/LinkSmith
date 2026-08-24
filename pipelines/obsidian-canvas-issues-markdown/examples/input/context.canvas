@@ -1,0 +1,98 @@
+{
+  "nodes": [
+    {
+      "id": "group-team",
+      "type": "group",
+      "x": 0,
+      "y": 0,
+      "width": 540,
+      "height": 420,
+      "label": "Team"
+    },
+    {
+      "id": "group-client",
+      "type": "group",
+      "x": 620,
+      "y": 0,
+      "width": 540,
+      "height": 420,
+      "label": "Client"
+    },
+    {
+      "id": "node-team-1",
+      "type": "text",
+      "x": 40,
+      "y": 60,
+      "width": 220,
+      "height": 80,
+      "text": "One delivery lead is handling planning and stakeholder alignment."
+    },
+    {
+      "id": "node-team-2",
+      "type": "text",
+      "x": 40,
+      "y": 170,
+      "width": 220,
+      "height": 80,
+      "text": "Two mid-level engineers are split across support work and new feature delivery."
+    },
+    {
+      "id": "node-team-3",
+      "type": "text",
+      "x": 280,
+      "y": 60,
+      "width": 220,
+      "height": 80,
+      "text": "Senior engineering capacity is concentrated on a migration stream."
+    },
+    {
+      "id": "node-client-1",
+      "type": "text",
+      "x": 660,
+      "y": 60,
+      "width": 220,
+      "height": 80,
+      "text": "Client priorities are changing weekly."
+    },
+    {
+      "id": "node-client-2",
+      "type": "text",
+      "x": 660,
+      "y": 170,
+      "width": 220,
+      "height": 80,
+      "text": "Escalations are slow when ownership is unclear."
+    },
+    {
+      "id": "node-client-3",
+      "type": "text",
+      "x": 900,
+      "y": 60,
+      "width": 220,
+      "height": 80,
+      "text": "A visible triage rhythm could reduce churn."
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "fromNode": "node-team-1",
+      "toNode": "node-client-1"
+    },
+    {
+      "id": "edge-2",
+      "fromNode": "node-team-1",
+      "toNode": "node-client-2"
+    },
+    {
+      "id": "edge-3",
+      "fromNode": "node-team-2",
+      "toNode": "node-client-1"
+    },
+    {
+      "id": "edge-4",
+      "fromNode": "node-team-3",
+      "toNode": "node-client-3"
+    }
+  ]
+}

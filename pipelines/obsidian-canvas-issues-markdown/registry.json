@@ -1,0 +1,93 @@
+{
+  "services": [
+    {
+      "id": "obsidian-canvas-to-relationships",
+      "kind": "transform",
+      "deterministic": true,
+      "description": "Convert an Obsidian canvas file into relationships JSON.",
+      "entrypoint": "docker://obsidian-canvas-to-relationships",
+      "inputs": [
+        {
+          "name": "canvas",
+          "type": "obsidian-canvas",
+          "mode": "file",
+          "cardinality": "one"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "relationships",
+          "type": "canvas-relationships",
+          "mode": "file",
+          "cardinality": "one",
+          "schemaRef": "schemas/canvas-relationships.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "canvas-relationships-to-issues-json",
+      "kind": "transform",
+      "deterministic": false,
+      "description": "Extract issue-oriented JSON from canvas-relationships input through the shared LLM transformer runtime.",
+      "entrypoint": "docker://canvas-relationships-to-issues-json",
+      "inputs": [
+        {
+          "name": "data",
+          "type": "canvas-relationships",
+          "mode": "file",
+          "cardinality": "one"
+        },
+        {
+          "name": "prompt",
+          "type": "mustache-template",
+          "mode": "file",
+          "cardinality": "one"
+        },
+        {
+          "name": "schema",
+          "type": "json-document",
+          "mode": "file",
+          "cardinality": "one"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "result",
+          "type": "json-document",
+          "mode": "file",
+          "cardinality": "one",
+          "schemaRef": "pipelines/obsidian-canvas-issues-markdown/resources/issues.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "json-to-markdown-renderer",
+      "kind": "render",
+      "deterministic": true,
+      "description": "Render Markdown from JSON and a Mustache template.",
+      "entrypoint": "docker://json-to-markdown-renderer",
+      "inputs": [
+        {
+          "name": "data",
+          "type": "json-document",
+          "mode": "file",
+          "cardinality": "one"
+        },
+        {
+          "name": "template",
+          "type": "mustache-template",
+          "mode": "file",
+          "cardinality": "one"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "document",
+          "type": "markdown-document",
+          "mode": "file",
+          "cardinality": "one"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,113 @@
+{
+  "id": "obsidian-canvas-issues-markdown",
+  "name": "Obsidian Canvas Issues Markdown",
+  "description": "Convert an Obsidian canvas into relationships JSON, extract issue-oriented JSON through an LLM-backed transformation, and render the result as Markdown.",
+  "version": "0.1.0",
+  "inputs": [
+    {
+      "name": "canvas",
+      "type": "obsidian-canvas",
+      "mode": "file",
+      "cardinality": "one",
+      "description": "Source Obsidian canvas file."
+    }
+  ],
+  "outputs": [
+    {
+      "name": "issues",
+      "type": "json-document",
+      "mode": "file",
+      "cardinality": "one",
+      "description": "Structured issues JSON generated from the canvas relationships."
+    },
+    {
+      "name": "document",
+      "type": "markdown-document",
+      "mode": "file",
+      "cardinality": "one",
+      "description": "Rendered Markdown report derived from the issues JSON."
+    }
+  ],
+  "steps": [
+    {
+      "id": "normalize",
+      "description": "Convert the raw canvas into deterministic relationships JSON.",
+      "invocations": [
+        {
+          "id": "canvas",
+          "service": "obsidian-canvas-to-relationships"
+        }
+      ]
+    },
+    {
+      "id": "extract",
+      "description": "Extract issue-oriented JSON from the normalized canvas relationships.",
+      "invocations": [
+        {
+          "id": "canvas",
+          "service": "canvas-relationships-to-issues-json",
+          "resources": [
+            {
+              "name": "prompt",
+              "type": "mustache-template",
+              "mode": "file",
+              "cardinality": "one",
+              "path": "resources/issues.prompt.mustache",
+              "description": "Prompt template for extracting issues from the normalized canvas JSON."
+            },
+            {
+              "name": "schema",
+              "type": "json-document",
+              "mode": "file",
+              "cardinality": "one",
+              "path": "resources/issues.schema.json",
+              "description": "Required JSON schema for the issues output."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "render",
+      "description": "Render the issues JSON into Markdown.",
+      "invocations": [
+        {
+          "id": "report",
+          "service": "json-to-markdown-renderer",
+          "resources": [
+            {
+              "name": "template",
+              "type": "mustache-template",
+              "mode": "file",
+              "cardinality": "one",
+              "path": "resources/issues-report.template.mustache",
+              "description": "Mustache template used to render the issues Markdown report."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "pipeline:input.canvas",
+      "to": "normalize.canvas.canvas"
+    },
+    {
+      "from": "normalize.canvas.relationships",
+      "to": "extract.canvas.data"
+    },
+    {
+      "from": "extract.canvas.result",
+      "to": "pipeline:output.issues"
+    },
+    {
+      "from": "extract.canvas.result",
+      "to": "render.report.data"
+    },
+    {
+      "from": "render.report.document",
+      "to": "pipeline:output.document"
+    }
+  ]
+}

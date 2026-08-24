@@ -1,0 +1,63 @@
+{
+  "title": "Canvas Issue Extraction",
+  "overview": "The canvas highlights delivery pressure around shifting client priorities, unclear ownership, and stretched coordination capacity.",
+  "issues": [
+    {
+      "id": "priority-churn",
+      "title": "Weekly priority churn is destabilizing delivery focus",
+      "category": "delivery-risk",
+      "priority": "high",
+      "why_it_matters": "Frequent priority changes can disrupt planning, reduce delivery predictability, and increase context switching across the team.",
+      "signals": [
+        "Client priorities are changing weekly.",
+        "Two mid-level engineers are split across support work and new feature delivery."
+      ],
+      "open_questions": [
+        "Which work items are most frequently being reshuffled?",
+        "Is there an agreed weekly planning checkpoint with the client?"
+      ],
+      "recommended_next_steps": [
+        "Introduce a visible weekly reprioritization checkpoint.",
+        "Separate protected delivery work from interrupt-driven support work."
+      ]
+    },
+    {
+      "id": "ownership-clarity",
+      "title": "Unclear ownership is slowing escalations",
+      "category": "coordination-risk",
+      "priority": "high",
+      "why_it_matters": "If escalation paths are ambiguous, urgent issues take longer to resolve and stakeholder confidence can drop.",
+      "signals": [
+        "Escalations are slow when ownership is unclear.",
+        "One delivery lead is handling planning and stakeholder alignment."
+      ],
+      "open_questions": [
+        "Which decisions require explicit owners today?",
+        "Are engineering and stakeholder escalation paths currently distinct?"
+      ],
+      "recommended_next_steps": [
+        "Define named owners for operational and delivery escalation paths.",
+        "Publish a lightweight escalation matrix for the team and client."
+      ]
+    },
+    {
+      "id": "triage-rhythm",
+      "title": "The team may be missing a stabilizing triage cadence",
+      "category": "process-opportunity",
+      "priority": "medium",
+      "why_it_matters": "A visible triage rhythm can absorb changing priorities more deliberately and reduce reactive churn.",
+      "signals": [
+        "A visible triage rhythm could reduce churn.",
+        "Senior engineering capacity is concentrated on a migration stream."
+      ],
+      "open_questions": [
+        "Who should own the triage cadence?",
+        "How often should urgent support work be reviewed against migration commitments?"
+      ],
+      "recommended_next_steps": [
+        "Establish a recurring triage forum with clear intake rules.",
+        "Review support interrupts against migration commitments each cycle."
+      ]
+    }
+  ]
+}

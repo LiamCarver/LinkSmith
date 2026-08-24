@@ -8,6 +8,8 @@ import tempfile
 import unittest
 import urllib.error
 import urllib.request
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from linksmith_core.errors import SchemaValidationError
@@ -21,7 +23,148 @@ def _engine_docker_payload(name: str, *, substitutions: dict[str, str] | None = 
     return load_fixture_json("engine-docker/payloads.json", key=name, substitutions=substitutions)
 
 
+class _FakeCanvasIssuesLlmHandler(BaseHTTPRequestHandler):
+    response_body: dict[str, object] = {
+        "choices": [
+            {
+                "message": {
+                    "content": ""
+                }
+            }
+        ]
+    }
+    requests: list[dict[str, object]] = []
+
+    def do_POST(self) -> None:  # noqa: N802
+        content_length = int(self.headers.get("Content-Length", "0"))
+        body = self.rfile.read(content_length).decode("utf-8")
+        self.__class__.requests.append(json.loads(body))
+        payload = json.dumps(self.__class__.response_body).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def log_message(self, format: str, *args) -> None:  # noqa: A003
+        return
+
+
 class EngineDockerTests(unittest.TestCase):
+    def test_run_real_canvas_issues_pipeline_with_fake_llm(self) -> None:
+        if shutil.which("docker") is None:
+            self.skipTest("Docker is not available in PATH.")
+
+        repo_root = Path(__file__).resolve().parents[1]
+        pipeline_root = repo_root / "pipelines" / "obsidian-canvas-issues-markdown"
+        canvas_image_tag = "linksmith-obsidian-canvas-to-relationships:engine-test"
+        llm_image_tag = "linksmith-json-to-json-llm-transformer:engine-test"
+        renderer_image_tag = "linksmith-json-to-markdown-renderer:engine-test"
+
+        subprocess.run(
+            [
+                "docker",
+                "build",
+                "-f",
+                str(repo_root / "services" / "obsidian-canvas-to-relationships" / "Dockerfile"),
+                "-t",
+                canvas_image_tag,
+                str(repo_root),
+            ],
+            check=True,
+        )
+        subprocess.run(
+            [
+                "docker",
+                "build",
+                "-f",
+                str(repo_root / "services" / "json-to-json-llm-transformer" / "Dockerfile"),
+                "-t",
+                llm_image_tag,
+                str(repo_root),
+            ],
+            check=True,
+        )
+        subprocess.run(
+            [
+                "docker",
+                "build",
+                "-f",
+                str(repo_root / "services" / "json-to-markdown-renderer" / "Dockerfile"),
+                "-t",
+                renderer_image_tag,
+                str(repo_root),
+            ],
+            check=True,
+        )
+
+        expected_issues_path = pipeline_root / "examples" / "expected" / "issues.json"
+        expected_document_path = pipeline_root / "examples" / "expected" / "document.md"
+        expected_issues_payload = json.loads(expected_issues_path.read_text(encoding="utf-8"))
+        _FakeCanvasIssuesLlmHandler.requests = []
+        _FakeCanvasIssuesLlmHandler.response_body = {
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(expected_issues_payload)
+                    }
+                }
+            ]
+        }
+        server = ThreadingHTTPServer(("127.0.0.1", 0), _FakeCanvasIssuesLlmHandler)
+        server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        server_thread.start()
+        self.addCleanup(server.shutdown)
+        self.addCleanup(server.server_close)
+        self.addCleanup(server_thread.join, 1)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            runtime_path = root / "runtime.json"
+            runtime_payload = json.loads((pipeline_root / "runtime.json").read_text(encoding="utf-8"))
+            runtime_payload["runner"]["services"]["obsidian-canvas-to-relationships"]["image"] = canvas_image_tag
+            runtime_payload["runner"]["services"]["canvas-relationships-to-issues-json"]["image"] = llm_image_tag
+            runtime_payload["runner"]["services"]["canvas-relationships-to-issues-json"]["environment"] = {
+                "LINKSMITH_LLM_BASE_URL": f"http://host.docker.internal:{server.server_port}/v1",
+                "LINKSMITH_LLM_API_KEY": "test-key",
+                "LINKSMITH_LLM_MODEL": "fake-local-model",
+                "LINKSMITH_LLM_TEMPERATURE": "0",
+                "LINKSMITH_LLM_MAX_RETRIES": "1",
+                "LINKSMITH_LLM_TIMEOUT_SECONDS": "60",
+            }
+            runtime_payload["runner"]["services"]["json-to-markdown-renderer"]["image"] = renderer_image_tag
+            runtime_path.write_text(json.dumps(runtime_payload), encoding="utf-8")
+
+            result = run_pipeline(
+                PipelineRunRequest(
+                    pipeline_path=pipeline_root / "pipeline.json",
+                    registry_path=pipeline_root / "registry.json",
+                    pipeline_inputs={
+                        "canvas": pipeline_root / "examples" / "input" / "context.canvas",
+                    },
+                    run_root=root / "runs",
+                    run_id="run-canvas-issues-001",
+                    validate_schema=False,
+                    validate_outputs=True,
+                    service_runner=load_service_runner(
+                        load_runtime_config(runtime_path, validate_schema=False)
+                    ),
+                )
+            )
+
+            actual_issues = json.loads(result.outputs["issues"][0].read_text(encoding="utf-8"))
+            expected_issues = json.loads(expected_issues_path.read_text(encoding="utf-8"))
+            actual_document = result.outputs["document"][0].read_text(encoding="utf-8")
+            expected_document = expected_document_path.read_text(encoding="utf-8")
+
+            self.assertEqual(actual_issues, expected_issues)
+            self.assertEqual(actual_document, expected_document)
+            self.assertEqual(_FakeCanvasIssuesLlmHandler.requests[0]["model"], "fake-local-model")
+            self.assertIn(
+                "identify distinct issues",
+                _FakeCanvasIssuesLlmHandler.requests[0]["messages"][1]["content"].lower(),
+            )
+
     def test_run_pipeline_with_real_lmstudio_llm_transformer_and_markdown_renderer(self) -> None:
         if shutil.which("docker") is None:
             self.skipTest("Docker is not available in PATH.")
