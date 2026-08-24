@@ -1,0 +1,27 @@
+{
+  "artifactType": "markdown-corpus",
+  "items": [
+    {
+      "sourceId": "001-notes",
+      "fileName": "notes.md",
+      "relativePath": "client/notes.md",
+      "content": "# Client Notes\n\n- Priorities shift weekly.\n- Handoffs are inconsistent.\n"
+    },
+    {
+      "sourceId": "002-principles",
+      "fileName": "principles.md",
+      "relativePath": "team/principles.md",
+      "content": "# Team Principles\n\n- Prefer explicit ownership.\n- Bias toward small reversible changes.\n"
+    }
+  ],
+  "sourceRefs": [
+    {
+      "sourceId": "001-notes",
+      "relativePath": "client/notes.md"
+    },
+    {
+      "sourceId": "002-principles",
+      "relativePath": "team/principles.md"
+    }
+  ]
+}
