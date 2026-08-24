@@ -1,0 +1,116 @@
+{
+  "runner": {
+    "kind": "docker",
+    "services": {
+      "principles-markdown-to-corpus": {
+        "image": "linksmith-markdown-directory-to-json-corpus:engine-test",
+        "inputArguments": {
+          "documents": "--documents-dir"
+        },
+        "outputDirArgument": "--output-dir",
+        "outputFileNameArguments": {
+          "corpus": "--output-file-name"
+        },
+        "outputFileNames": {
+          "corpus": "principles-corpus.json"
+        },
+        "schemaBaseDirArgument": "--schema-base-dir",
+        "schemaBaseDirValue": "/app",
+        "inputMountRoot": "/data/inputs",
+        "outputMountRoot": "/data/output"
+      },
+      "job-specs-markdown-to-corpus": {
+        "image": "linksmith-markdown-directory-to-json-corpus:engine-test",
+        "inputArguments": {
+          "documents": "--documents-dir"
+        },
+        "outputDirArgument": "--output-dir",
+        "outputFileNameArguments": {
+          "corpus": "--output-file-name"
+        },
+        "outputFileNames": {
+          "corpus": "job-specs-corpus.json"
+        },
+        "schemaBaseDirArgument": "--schema-base-dir",
+        "schemaBaseDirValue": "/app",
+        "inputMountRoot": "/data/inputs",
+        "outputMountRoot": "/data/output"
+      },
+      "context-canvas-to-relationships": {
+        "image": "linksmith-obsidian-canvas-to-relationships:engine-test",
+        "inputArguments": {
+          "canvas": "--input"
+        },
+        "outputDirArgument": "--output-dir",
+        "outputFileNameArguments": {
+          "relationships": "--output-file-name"
+        },
+        "outputFileNames": {
+          "relationships": "context-relationships.json"
+        },
+        "schemaBaseDirArgument": "--schema-base-dir",
+        "schemaBaseDirValue": "/app",
+        "inputMountRoot": "/data/inputs",
+        "outputMountRoot": "/data/output"
+      },
+      "advisory-sources-to-json-bundle": {
+        "image": "linksmith-json-files-to-json-bundle:engine-test",
+        "inputArguments": {
+          "documents": "--documents-dir"
+        },
+        "outputDirArgument": "--output-dir",
+        "outputFileNameArguments": {
+          "bundle": "--output-file-name"
+        },
+        "outputFileNames": {
+          "bundle": "bundle.json"
+        },
+        "schemaBaseDirArgument": "--schema-base-dir",
+        "schemaBaseDirValue": "/app",
+        "inputMountRoot": "/data/inputs",
+        "outputMountRoot": "/data/output"
+      },
+      "bundled-advisory-context-to-effort-advice-json": {
+        "image": "linksmith-json-to-json-llm-transformer:engine-live-test",
+        "inputArguments": {
+          "data": "--data",
+          "prompt": "--prompt",
+          "schema": "--schema"
+        },
+        "outputDirArgument": "--output-dir",
+        "outputFileNameArguments": {
+          "result": "--output-file-name"
+        },
+        "outputFileNames": {
+          "result": "result.json"
+        },
+        "inputMountRoot": "/data/inputs",
+        "outputMountRoot": "/data/output",
+        "environment": {
+          "LINKSMITH_LLM_BASE_URL": "http://host.docker.internal:1234/v1",
+          "LINKSMITH_LLM_API_KEY": "lm-studio",
+          "LINKSMITH_LLM_MODEL": "google/gemma-4-e4b",
+          "LINKSMITH_LLM_TEMPERATURE": "0",
+          "LINKSMITH_LLM_MAX_RETRIES": "2",
+          "LINKSMITH_LLM_TIMEOUT_SECONDS": "120"
+        }
+      },
+      "json-to-markdown-renderer": {
+        "image": "linksmith-json-to-markdown-renderer:engine-live-test",
+        "inputArguments": {
+          "data": "--data",
+          "template": "--template"
+        },
+        "outputDirArgument": "--output-dir",
+        "outputFileNameArguments": {
+          "document": "--output-file-name"
+        },
+        "outputFileNames": {
+          "document": "document.md"
+        },
+        "inputMountRoot": "/data/inputs",
+        "outputMountRoot": "/data/output"
+      }
+    }
+  }
+}

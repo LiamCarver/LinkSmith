@@ -1,0 +1,165 @@
+{
+  "services": [
+    {
+      "id": "principles-markdown-to-corpus",
+      "kind": "transform",
+      "deterministic": true,
+      "description": "Convert the principles Markdown folder into a deterministic JSON corpus artifact.",
+      "entrypoint": "docker://principles-markdown-to-corpus",
+      "inputs": [
+        {
+          "name": "documents",
+          "type": "markdown-directory",
+          "mode": "directory",
+          "cardinality": "one"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "corpus",
+          "type": "json-document",
+          "mode": "file",
+          "cardinality": "one",
+          "schemaRef": "schemas/markdown-corpus.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "job-specs-markdown-to-corpus",
+      "kind": "transform",
+      "deterministic": true,
+      "description": "Convert the job specifications Markdown folder into a deterministic JSON corpus artifact.",
+      "entrypoint": "docker://job-specs-markdown-to-corpus",
+      "inputs": [
+        {
+          "name": "documents",
+          "type": "markdown-directory",
+          "mode": "directory",
+          "cardinality": "one"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "corpus",
+          "type": "json-document",
+          "mode": "file",
+          "cardinality": "one",
+          "schemaRef": "schemas/markdown-corpus.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "context-canvas-to-relationships",
+      "kind": "transform",
+      "deterministic": true,
+      "description": "Convert the combined client-and-team canvas into relationships JSON.",
+      "entrypoint": "docker://context-canvas-to-relationships",
+      "inputs": [
+        {
+          "name": "canvas",
+          "type": "obsidian-canvas",
+          "mode": "file",
+          "cardinality": "one"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "relationships",
+          "type": "json-document",
+          "mode": "file",
+          "cardinality": "one",
+          "schemaRef": "schemas/canvas-relationships.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "advisory-sources-to-json-bundle",
+      "kind": "transform",
+      "deterministic": true,
+      "description": "Bundle the principles corpus, job specs corpus, and context relationships into one deterministic provenance-preserving JSON artifact.",
+      "entrypoint": "docker://advisory-sources-to-json-bundle",
+      "inputs": [
+        {
+          "name": "documents",
+          "type": "json-document",
+          "mode": "file",
+          "cardinality": "many"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "bundle",
+          "type": "json-bundle",
+          "mode": "file",
+          "cardinality": "one",
+          "schemaRef": "schemas/json-bundle.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "bundled-advisory-context-to-effort-advice-json",
+      "kind": "transform",
+      "deterministic": false,
+      "description": "Summarize the bundled principles, jobs, and context artifact into effort-distribution advisory JSON through the shared LLM transformer runtime.",
+      "entrypoint": "docker://bundled-advisory-context-to-effort-advice-json",
+      "inputs": [
+        {
+          "name": "data",
+          "type": "json-bundle",
+          "mode": "file",
+          "cardinality": "one"
+        },
+        {
+          "name": "prompt",
+          "type": "mustache-template",
+          "mode": "file",
+          "cardinality": "one"
+        },
+        {
+          "name": "schema",
+          "type": "json-document",
+          "mode": "file",
+          "cardinality": "one"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "result",
+          "type": "json-document",
+          "mode": "file",
+          "cardinality": "one",
+          "schemaRef": "pipelines/principles-jobs-canvas-effort-advisory-markdown/resources/effort-advisory.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "json-to-markdown-renderer",
+      "kind": "render",
+      "deterministic": true,
+      "description": "Render Markdown from JSON and a Mustache template.",
+      "entrypoint": "docker://json-to-markdown-renderer",
+      "inputs": [
+        {
+          "name": "data",
+          "type": "json-document",
+          "mode": "file",
+          "cardinality": "one"
+        },
+        {
+          "name": "template",
+          "type": "mustache-template",
+          "mode": "file",
+          "cardinality": "one"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "document",
+          "type": "markdown-document",
+          "mode": "file",
+          "cardinality": "one"
+        }
+      ]
+    }
+  ]
+}
